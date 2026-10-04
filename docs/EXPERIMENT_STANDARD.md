@@ -6,7 +6,6 @@ Every stage in this repository follows this standardized engineering template to
 
 ## Experiment Report Template
 
-```markdown
 # Stage [XX]: [Experiment Title]
 
 ## 1. System Context & Hardware
@@ -25,9 +24,11 @@ Every stage in this repository follows this standardized engineering template to
 
 ## 3. Test Methodology & Execution
 * Command or script executed:
+
 ```bash
 python benchmark_concurrency.py --concurrency 8 --prompts 32
 ```
+
 * Telemetry collection commands:
   * GPU memory / utilization: `nvidia-smi` / `asitop` / Prometheus exporter
   * System diagnostics: `vmstat 1`, `pidstat -r 1`, `ss -s`
@@ -36,6 +37,7 @@ python benchmark_concurrency.py --concurrency 8 --prompts 32
 
 ## 4. Observed Telemetry & Data
 * Summary Table:
+
 | Concurrency Level | TTFT P50 (ms) | TTFT P90 (ms) | TPOT Avg (ms) | Throughput (tok/s) | GPU VRAM Peak (MiB) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 User | ... | ... | ... | ... | ... |
@@ -64,4 +66,3 @@ python benchmark_concurrency.py --concurrency 8 --prompts 32
 
 ## 8. SRE & Platform Interview Takeaways
 * How to articulate this specific experiment during a systems or platform engineering interview.
-```
