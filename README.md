@@ -104,10 +104,11 @@ The experiments in this repository are executed and verified across real, hetero
 ai-infra-systems/
 ├── README.md
 ├── docs/
-│   ├── INFERENCE_ENGINEERING_ROADMAP.md  # Master 8-domain curriculum & war-room Q&A
-│   ├── ARCHITECTURE.md                  # End-to-end platform architecture deep-dive
-│   ├── GLOSSARY.md                      # Foundational systems & inference mental models
-│   └── EXPERIMENT_STANDARD.md           # Standard template for all stage reports
+│   ├── 00-FOUNDATIONS-MODELS-ARCHITECTURES-INFERENCE.md  # Complete ML taxonomy & decision matrix
+│   ├── INFERENCE_ENGINEERING_ROADMAP.md                  # Master 8-domain curriculum & war-room Q&A
+│   ├── ARCHITECTURE.md                                  # End-to-end platform architecture deep-dive
+│   ├── GLOSSARY.md                                      # Foundational systems & inference mental models
+│   └── EXPERIMENT_STANDARD.md                           # Standard template for all stage reports
 ├── stages/
 │   ├── 01-baseline-inference/
 │   ├── 02-cold-start-behavior/
