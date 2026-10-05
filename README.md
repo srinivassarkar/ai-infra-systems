@@ -104,9 +104,10 @@ The experiments in this repository are executed and verified across real, hetero
 ai-infra-systems/
 ├── README.md
 ├── docs/
-│   ├── ARCHITECTURE.md          # End-to-end platform architecture deep-dive
-│   ├── GLOSSARY.md              # Foundational systems & inference mental models
-│   └── EXPERIMENT_STANDARD.md   # Standard template for all stage reports
+│   ├── INFERENCE_ENGINEERING_ROADMAP.md  # Master 8-domain curriculum & war-room Q&A
+│   ├── ARCHITECTURE.md                  # End-to-end platform architecture deep-dive
+│   ├── GLOSSARY.md                      # Foundational systems & inference mental models
+│   └── EXPERIMENT_STANDARD.md           # Standard template for all stage reports
 ├── stages/
 │   ├── 01-baseline-inference/
 │   ├── 02-cold-start-behavior/
@@ -119,10 +120,10 @@ ai-infra-systems/
 │   ├── 09-production-deployment/
 │   └── 10-capacity-planning/
 └── platform/
-    ├── ingress/                 # Nginx configurations & buffer tuning
-    ├── gateway/                 # Queue, scheduler, and health check daemons
-    ├── engine/                  # Serving runtimes (vLLM / llama.cpp / mlx)
-    └── observability/           # Prometheus exporters, dashboards, and alerts
+    ├── ingress/                         # Nginx configurations & buffer tuning
+    ├── gateway/                         # Queue, scheduler, and health check daemons
+    ├── engine/                          # Serving runtimes (vLLM / llama.cpp / mlx)
+    └── observability/                   # Prometheus exporters, dashboards, and alerts
 ```
 
 ---
