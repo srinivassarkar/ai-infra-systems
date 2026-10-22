@@ -105,3 +105,21 @@ python kv_cache_admission_controller.py \
   --prompt 8192 \
   --max-gen 2048
 ```
+
+---
+
+## 8. PagedAttention & Prefix Caching: `paged_kv_cache_simulator.py`
+
+While mathematical capacity planning protects against worst-case allocation, physical memory fragmentation causes up to 60-80% memory waste in naive serving setups.
+
+### Why PagedAttention Eliminates External Fragmentation:
+1. **Contiguous Allocation (Naive):** Dynamically growing arrays require allocating large contiguous VRAM chunks upfront based on maximum sequence length. When sequences finish at variable lengths, memory holes form that cannot fit new requests (external fragmentation).
+2. **Paged Physical Blocks (PagedAttention):** Sequences are split into fixed-size logical blocks (e.g. 16 tokens). Physical blocks are allocated on-demand from a non-contiguous pool. External memory fragmentation drops to **0%**, and internal fragmentation is strictly bounded to at most `block_size - 1` tokens per request.
+3. **Prefix Caching:** Shared system prompts (e.g., 256–2048 token instruction headers) map to identical cumulative hash digests. Subsequent requests share the exact physical blocks of earlier requests via reference counting (`ref_count > 1`), eliminating redundant prefill computation.
+
+### Run the Standalone Simulation:
+```bash
+python paged_kv_cache_simulator.py
+```
+This runs a visual step-by-step demonstration illustrating prompt admission, prefix cache hits, autoregressive token expansion, and reference-counted garbage collection with zero external memory fragmentation.
+
