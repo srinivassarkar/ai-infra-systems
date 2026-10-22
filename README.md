@@ -1,4 +1,4 @@
-# Production-Grade LLM Inference Platform
+# LLM Inference Reliability Lab
 
 A progressive systems engineering platform demonstrating end-to-end reliability, latency profiling, memory economics, and edge delivery for large language models.
 
