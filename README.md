@@ -44,18 +44,18 @@ Rather than a collection of disconnected tutorials, this repository builds and b
 
 Every stage is a self-contained, reproducible engineering experiment designed to answer a specific operational question:
 
-| Stage | Focus Area | Core Operational Question | Key Deliverable |
-| :--- | :--- | :--- | :--- |
-| **01** | **Baseline Inference** | How do TTFT, TPOT, and throughput differ between prefill and decode? | Benchmark harness + mathematical timing models. |
-| **02** | **Cold-Start Behavior** | What happens inside memory and disk during model load and warm-up? | Memory allocation timeline + preload scripts. |
-| **03** | **Concurrency & Queues** | How does queue depth inflate P90/P99 latency under concurrent traffic? | Head-of-line blocking measurements + load test. |
-| **04** | **Memory Pressure & OOM** | What causes KV cache explosion, and how do we prevent OOM crashes? | Exact VRAM budgeting formula + crash triage. |
-| **05** | **Edge Streaming Proxy** | Why does reverse proxy buffering break Server-Sent Events (SSE)? | Tuned Nginx proxy configs + backpressure tests. |
-| **06** | **Failure Injection** | How does the platform survive sudden daemon crashes and timeouts? | systemd/launchd auto-recovery + health probes. |
-| **07** | **Observability & Tracing** | How do we observe token generation latency inside distributed traces? | Prometheus alerts + OpenTelemetry span propagation. |
-| **08** | **Serving Optimization** | How do continuous batching and quantization affect throughput? | vLLM PagedAttention benchmarks + AWQ profiling. |
-| **09** | **Production Deployment** | How do we deploy and supervise the stack with production guarantees? | systemd units, launchd plists, and container specs. |
-| **10** | **Capacity Planning** | How many concurrent users can a given GPU/memory configuration support? | Sizing calculator + cost-per-token economics. |
+| Stage | Focus Area | Core Operational Question | Key Deliverable | Target Silicon |
+| :--- | :--- | :--- | :--- | :--- |
+| **01** | **Baseline Inference** | How do TTFT, TPOT, and throughput differ between prefill and decode? | Benchmark harness + mathematical timing models. | GTX 1050 Ti & M3 Ultra |
+| **02** | **Cold-Start Behavior** | What happens inside memory and disk during model load and warm-up? | Memory allocation timeline + page cache warm-up scripts. | GTX 1050 Ti & M3 Ultra |
+| **03** | **Concurrency & Queues** | How does queue depth inflate P90/P99 latency under concurrent traffic? | Head-of-line blocking measurements + saturation knee graph. | Mac mini M4 + k6 Client |
+| **04** | **Memory Pressure & OOM** | What causes KV cache explosion, and how do we prevent OOM crashes? | Exact VRAM budgeting formula + memory admission controller. | GTX 1050 Ti (4 GB) |
+| **05** | **Edge Streaming Proxy** | Why does reverse proxy buffering break Server-Sent Events (SSE)? | Tuned Nginx proxy configs (proxy_buffering off) + backpressure tests. | Linux Box / macOS |
+| **06** | **Failure Injection** | How does the platform survive sudden daemon crashes and stalls? | Dual health probes (/health/live vs /health/ready) + auto-recovery. | Linux / macOS |
+| **07** | **Observability & Tracing** | How do we observe token generation latency inside distributed traces? | Prometheus alerting rules + OpenTelemetry span propagation. | M3 Ultra + Prometheus |
+| **08** | **Serving Optimization & Economics** | How do continuous batching and quantization impact throughput and cost? | Empirical vLLM (PagedAttention + AWQ) vs llama.cpp run; measured $/1M tokens. | Cloud NVIDIA L4 (24GB) |
+| **09** | **Production K8s & KEDA** | How do we autoscale inference workloads without thrashing accelerators? | k3s manifests + KEDA event-driven autoscaling on Prometheus queue depth. | Local k3s Cluster |
+| **10** | **Capacity Planning** | How many concurrent users can a given silicon setup sustain within SLOs? | Hardware sizing calculator + empirical unit economics ($/1M tokens). | Workstation Calculator |
 
 ---
 
@@ -95,6 +95,9 @@ The experiments in this repository are executed and verified across real, hetero
 * **Node 4 (Client / Load Generator):**
   * Model: Apple Mac mini (Intel Core i5 6-Core, 16 GB RAM)
   * Role: Dedicated traffic injection (k6) without stealing target node compute.
+* **Node 5 (Cloud Accelerator Target - Dedicated Benchmark Run):**
+  * Model: Cloud Instance (NVIDIA L4 24GB GDDR6, Ada Lovelace, Compute Capability 8.9)
+  * Role: Dedicated Stage 08 production benchmark (vLLM + PagedAttention + AWQ vs llama.cpp) to establish empirical $/1M tokens baseline.
 
 ---
 
@@ -129,8 +132,11 @@ ai-infra-systems/
 
 ---
 
-## 6. Operating Philosophy
+## 6. Operating Philosophy & Career Alignment
 
-* **Zero Bluffing:** We only document what has been measured on physical silicon.
-* **No Endless Syllabi:** We do not study optimization techniques in isolation; we solve concrete bottlenecks in a running system.
+* **Zero Bluffing & Empirical Metrics:** We only document what has been measured on physical silicon. We report cost strictly as measured **$/1M tokens** derived from verified benchmark runs, never quoting hypothetical or unverified savings.
+* **Event-Driven Orchestration:** We autoscale inference on **Prometheus queue depth** via KEDA, rejecting naive CPU-based autoscaling that leads to accelerator thrashing.
 * **Systems First:** We focus on memory layout, kernel syscalls, network sockets, and process resilience.
+* **Two-Tier Market Alignment:** This repository is engineered to outclass competitors across two distinct market tiers:
+  1. *Primary Strike:* Platform / DevOps / SRE / MLOps roles at tech companies and scale-ups operating LLM workloads.
+  2. *Secondary Strike:* Dedicated AI Platform / Inference Infrastructure roles at fast-growing AI startups.
