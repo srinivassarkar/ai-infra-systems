@@ -1,0 +1,13 @@
+# Kind Cluster Configuration with Simulated Accelerated Worker
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: gpu-scaling-lab
+nodes:
+  - role: control-plane
+  - role: worker
+    labels:
+      node.kubernetes.io/instance-type: simulated-gpu-node
+      accelerator: nvidia-simulated
+    extraMounts:
+      - hostPath: /var/lib/kubelet/device-plugins
+        containerPath: /var/lib/kubelet/device-plugins

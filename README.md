@@ -45,7 +45,7 @@ No employer data, proprietary hostnames, or credentials appear in this repositor
 | **06** | How does the stack survive crashes and worker stalls? | Dual health probes (`/health/live` vs `/health/ready`) + auto-recovery | Linux / macOS |
 | **07** | Where does token latency show up in a distributed trace? | Prometheus alerts + OpenTelemetry spans | M3 Ultra + Prometheus |
 | **08** | How do continuous batching and quantization change throughput? | Batching and quantization benchmarks (FP16 vs AWQ/GGUF) | M3 Ultra & GTX 1050 Ti |
-| **09** | How is the stack deployed and supervised on Kubernetes? | systemd baseline, then k3s + KEDA queue-depth autoscaler | Local k3s Cluster |
+| **09** | How do we scale GPU workloads on Kubernetes without cloud waste? | kind/k3s + Simulated GPU Device Plugin + KEDA queue-depth autoscaler | Local Cluster (kind/k3s) |
 | **10** | How many concurrent users does a hardware config support? | Sizing calculator + empirical unit economics framework | Workstation Calculator |
 
 Serving runtimes are `llama.cpp` (CUDA, Node 1) and `mlx-lm` / `llama.cpp` (Apple Silicon, Node 2).

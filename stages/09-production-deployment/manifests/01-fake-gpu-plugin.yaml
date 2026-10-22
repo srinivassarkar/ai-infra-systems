@@ -1,0 +1,42 @@
+# Fake GPU Device Plugin DaemonSet
+# Advertises 4 virtual 'nvidia.com/gpu' devices to the Kubelet socket
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fake-gpu-device-plugin
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: fake-gpu-device-plugin
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fake-gpu-device-plugin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fake-gpu-device-plugin
+    spec:
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+      nodeSelector:
+        accelerator: nvidia-simulated
+      containers:
+        - name: mock-plugin
+          image: ghcr.io/srinivassarkar/fake-gpu-device-plugin:v1.0.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: GPU_COUNT
+              value: "4"
+            - name: RESOURCE_NAME
+              value: "nvidia.com/gpu"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins

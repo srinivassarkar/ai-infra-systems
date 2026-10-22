@@ -1,0 +1,23 @@
+# KEDA ScaledObject: Autoscaling on Prometheus Queue Depth
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: llm-inference-autoscaler
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llm-inference-worker
+  minReplicaCount: 1
+  maxReplicaCount: 6
+  cooldownPeriod: 30
+  pollingInterval: 5
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+        metricName: http_requests_in_flight
+        # Scale when average in-flight requests per replica exceeds 2
+        threshold: "2"
+        query: sum(http_requests_in_flight{app="llm-inference-worker"})
