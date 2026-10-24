@@ -3,6 +3,9 @@
 How does LLM inference fail, slow down, and recover on real, modest hardware? One cohesive system, ten measured experiments.
 
 > **Status:** in progress. Every number in this repository comes from a measured run on the physical hardware below. Empty cells in the results table mean "not measured yet".
+>
+> **Interactive Systems Visualizer:**
+> Walk through the mechanical cause-and-effect chain from GPU matrix math to vLLM continuous batching in our live [Interactive Inference Simulator](https://srinivassarkar.github.io/ai-infra-systems/). Source code available in [`docs/interactive/`](docs/interactive/).
 
 ---
 
@@ -90,6 +93,9 @@ Each stage folder (`stages/01-...` through `stages/10-...`) follows this strict 
 ai-infra-systems/
 ├── README.md
 ├── docs/
+│   ├── interactive/                                     # Live interactive GPU-to-served-model visualizer
+│   │   ├── index.html
+│   │   └── from-gpu-to-served-model.html
 │   ├── 00-FOUNDATIONS-MODELS-ARCHITECTURES-INFERENCE.md  # Complete ML taxonomy & decision matrix
 │   ├── INFERENCE_ENGINEERING_ROADMAP.md                  # Master 8-domain curriculum & war-room Q&A
 │   ├── ARCHITECTURE.md                                  # End-to-end platform architecture deep-dive

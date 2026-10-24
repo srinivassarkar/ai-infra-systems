@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>From GPU to served model: a cause-and-effect primer</title>
+<style>
+:root{--bg:#f6f4ef;--fg:#1d2420;--mut:#5d675f;--card:#ffffff;--bd:#d8d6cc;--ac:#3f7d20;--ac2:#1d5fa8;--warn:#b86e00;--bad:#c0392b;--off:#e4e2d8;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11160f;--fg:#e8eee4;--mut:#9aa595;--card:#1a2117;--bd:#2d372a;--ac:#8fd14a;--ac2:#6fb1f2;--warn:#f0b04a;--bad:#f07a6a;--off:#262f23}}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 Georgia,"Iowan Old Style",serif;max-width:860px;margin:auto;padding:24px 18px 80px}
+h1{font:800 clamp(30px,6vw,46px)/1.1 "Trebuchet MS",Verdana,sans-serif;letter-spacing:-.02em;margin:.2em 0}
+h2{font:700 25px/1.2 "Trebuchet MS",Verdana,sans-serif;margin:0 0 6px}
+.sub{color:var(--mut)}
+section{margin:44px 0;padding-top:8px;border-top:3px solid var(--ac)}
+.chain{margin:14px 0;padding:0;list-style:none}
+.chain li{padding:6px 0 6px 16px;border-left:3px solid var(--bd);margin-left:6px}
+.chain li b{font-family:"Trebuchet MS",Verdana,sans-serif;color:var(--ac2)}
+.chain li.a b{color:var(--ac)}
+.box{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin:14px 0;font-family:"Trebuchet MS",Verdana,sans-serif;font-size:15px}
+button,select{font:600 14px "Trebuchet MS",Verdana,sans-serif;background:var(--ac);color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer;margin:2px}
+button.s,select{background:var(--off);color:var(--fg)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--ac2);outline-offset:2px}
+code{font:14px Consolas,Menlo,monospace;background:var(--off);padding:1px 5px;border-radius:4px}
+pre{background:var(--off);padding:10px;border-radius:8px;overflow-x:auto;font:13px/1.5 Consolas,Menlo,monospace;margin:8px 0}
+.grid{display:grid;grid-template-columns:repeat(16,1fr);gap:3px}
+.cell{aspect-ratio:1;background:var(--off);border-radius:3px;transition:background .15s}
+.cell.on{background:var(--ac)}.cell.on2{background:var(--ac2)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.lab{font-size:13px;color:var(--mut);margin:6px 0 3px}
+.th{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:46px;height:46px;border-radius:6px;background:var(--off);margin:2px;font:12px Consolas,monospace;cursor:pointer;transition:all .3s;border:2px solid transparent}
+.th.on{background:var(--ac);color:#fff}.th.sel{border-color:var(--warn)}
+.blk{display:inline-block;border:2px dashed var(--bd);border-radius:8px;padding:4px;margin:3px}
+.arr span{display:inline-block;width:38px;text-align:center;background:var(--off);margin:2px;border-radius:4px;font:13px Consolas,monospace;padding:3px 0;transition:background .3s}
+.arr span.on{background:var(--ac2);color:#fff}
+.node{border:2px solid var(--bd);border-radius:10px;padding:8px;margin:6px 0;transition:all .3s}
+.slot{display:inline-block;width:34px;height:34px;border-radius:6px;background:var(--off);margin:3px;vertical-align:middle;transition:all .4s;text-align:center;line-height:34px;font:11px Consolas,monospace;color:#fff}
+.slot.u{background:var(--ac)}.slot.u2{background:var(--ac2)}.slot.u3{background:var(--warn)}
+.lay{display:flex;gap:8px;flex-wrap:wrap}
+.lay>div{flex:1;min-width:150px;border:2px solid var(--bd);border-radius:10px;padding:10px;text-align:center;transition:all .4s;opacity:.55}
+.lay>div.hi{border-color:var(--ac);opacity:1;background:var(--card);box-shadow:0 0 0 3px color-mix(in srgb,var(--ac) 30%,transparent)}
+.bar{height:22px;display:flex;border-radius:6px;overflow:hidden;background:var(--off);margin:6px 0}
+.bar i{display:block;height:100%;transition:width .5s;font:11px/22px Consolas,monospace;color:#fff;text-align:center;overflow:hidden;white-space:nowrap}
+.q{display:flex;align-items:flex-end;gap:5px;height:90px}
+.q div{flex:1;position:relative;height:100%}
+.q div b{position:absolute;bottom:0;left:0;right:0;border:2px solid var(--mut);border-radius:3px 3px 0 0;background:transparent;transition:height .3s}
+.q div i{position:absolute;bottom:0;left:15%;right:15%;background:var(--ac);border-radius:3px 3px 0 0;transition:height .3s}
+.lane{height:26px;display:flex;gap:2px;margin:3px 0}
+.lane i{height:100%;border-radius:3px;background:var(--off);transition:background .2s;flex:0 0 14px}
+.lane i.r{background:var(--ac2)}.lane i.d{background:var(--off)}
+input[type=range]{width:100%;accent-color:var(--ac)}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;background:var(--off);font-size:13px}
+.bad{color:var(--bad)}.ok{color:var(--ac)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body>
+<h1>From GPU to served model</h1>
+<p class="sub">One chain of reasoning: every section exists because the previous one created a problem. Everything here is interactive.</p>
+
+<!-- 1 -->
+<section><h2>1. Why a GPU at all?</h2>
+<ul class="chain">
+<li><b>Challenge:</b> a neural network is mostly matrix multiplication, which means millions of tiny, independent multiply-adds.</li>
+<li><b>Why does that matter?</b> Independent work does not need to wait for other work, so it can all run at once.</li>
+<li><b>Who can run thousands of things at once?</b> A CPU has a few strong cores (great at complex sequential logic). An NVIDIA GPU has thousands of simple cores (great at doing the same operation on lots of data).</li>
+<li class="a"><b>So:</b> we hand the GPU the math. Race them below: 256 independent tasks.</li></ul>
+<div class="box"><div class="row"><button onclick="race()">Run race</button><span id="rs" class="pill">idle</span></div>
+<div class="lab">CPU: 8 cores, 8 tasks per tick</div><div class="grid" id="cpu"></div>
+<div class="lab">GPU: 128 lanes shown, 128 tasks per tick</div><div class="grid" id="gpu"></div></div></section>
+
+<!-- 2 -->
+<section><h2>2. CUDA: how do we tell thousands of cores what to do?</h2>
+<ul class="chain">
+<li><b>Challenge:</b> we cannot write 10,000 separate programs.</li>
+<li><b>Idea:</b> write one function (a <i>kernel</i>) and run it on many threads. Each thread must know which element is its own.</li>
+<li><b>How does a thread know?</b> Threads are grouped into blocks, blocks into a grid. Each thread computes <code>i = blockIdx*blockDim + threadIdx</code>.</li>
+<li class="a"><b>So:</b> <code>C[i] = A[i] + B[i]</code> runs for all i simultaneously. CUDA is NVIDIA's platform (language extensions, compiler, libraries) for this model. Click a thread, then launch.</li></ul>
+<div class="box"><pre>__global__ void add(float*A,float*B,float*C){
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  C[i] = A[i] + B[i];
+}  // launched as add&lt;&lt;&lt;3, 4&gt;&gt;&gt;(A,B,C)</pre>
+<div id="blks"></div><div id="tinfo" class="lab">Click a thread.</div>
+<div class="lab">A + B = C</div><div class="arr" id="ca"></div><div class="arr" id="cb"></div><div class="arr" id="cc"></div>
+<button onclick="launch()">Launch kernel</button><button class="s" onclick="resetK()">Reset</button></div></section>
+
+<!-- 3 -->
+<section><h2>3. NVIDIA Container Toolkit: GPUs inside containers</h2>
+<ul class="chain">
+<li><b>Challenge:</b> we ship apps in containers for portability, but a GPU is a physical device with a kernel driver on the host.</li>
+<li><b>Can the image contain the driver?</b> No. The driver must match the host kernel, and a container shares the host kernel.</li>
+<li><b>So who connects them?</b> A runtime hook that, at container start, injects the device files and driver libraries from the host.</li>
+<li class="a"><b>Result:</b> the image holds only CUDA user libs plus your app and stays portable. Step through it.</li></ul>
+<div class="box"><div class="lay" id="tk">
+<div id="t_c"><b>Container</b><br>app + CUDA libs<br>no driver</div>
+<div id="t_h"><b>Runtime hook</b><br>nvidia-container-<br>runtime</div>
+<div id="t_d"><b>Host</b><br>kernel driver, GPU<br>/dev/nvidia0</div></div>
+<p id="tt" style="min-height:48px"></p><button onclick="tstep(-1)" class="s">Back</button><button onclick="tstep(1)">Next</button>
+<pre>docker run --gpus all my-image nvidia-smi</pre></div></section>
+
+<!-- 4 -->
+<section><h2>4. Kubernetes: scheduling GPUs across machines</h2>
+<ul class="chain">
+<li><b>Challenge:</b> Kubernetes knows CPU and memory natively, but nothing about GPUs.</li>
+<li><b>How can it learn?</b> A <i>device plugin</i> (a DaemonSet per node) discovers GPUs and tells the kubelet: "this node has 4 <code>nvidia.com/gpu</code>".</li>
+<li><b>How does a pod ask for one?</b> Under <code>resources.limits</code>. For extended resources, requests must equal limits, and only whole numbers are allowed (no 0.5 GPU).</li>
+<li class="a"><b>So:</b> the scheduler just counts free GPUs per node, and a pod that fits nowhere stays Pending. Try it.</li></ul>
+<div class="box"><pre>resources:
+  limits:
+    nvidia.com/gpu: 2</pre>
+<div class="row"><button onclick="place(1)">Pod wants 1</button><button onclick="place(2)">Pod wants 2</button><button onclick="place(4)">Pod wants 4</button><button class="s" onclick="resetN()">Reset</button></div>
+<div id="nodes"></div><div id="nmsg" class="lab"></div></div></section>
+
+<!-- 5 -->
+<section><h2>5. VRAM and GPU utilization</h2>
+<ul class="chain">
+<li><b>Challenge:</b> the pod got a GPU. Will our model fit on it?</li>
+<li><b>What must live in VRAM?</b> The weights (params × bytes each), the KV cache (the attention memory of every token of every request in flight), and some overhead.</li>
+<li><b>What happens if the total exceeds VRAM?</b> Out-of-memory. There is no swap to save you.</li>
+<li class="a"><b>Note:</b> "utilization" in <code>nvidia-smi</code> only means a kernel was running during the sample window, not that the cores were busy. Memory used and utilization are separate numbers. Change the knobs.</li></ul>
+<div class="box"><div class="row">
+Model <select id="m" onchange="vram()"><option>7</option><option>13</option><option selected>70</option></select>B
+Precision <select id="p" onchange="vram()"><option value="2">FP16</option><option value="1">INT8</option><option value="0.5">INT4</option></select>
+Context <select id="cx" onchange="vram()"><option value="2048">2k</option><option value="8192" selected>8k</option><option value="32768">32k</option></select>
+Batch <select id="bt" onchange="vram()"><option>1</option><option selected>8</option><option>32</option></select>
+GPU <select id="g" onchange="vram()"><option value="24">24 GB</option><option value="80" selected>80 GB</option></select></div>
+<div class="bar" id="vb"></div><div id="vt"></div>
+<div class="lab">KV cache is approximated as 0.5 MB per token per 7B params at FP16. Real models vary (GQA shrinks it).</div></div></section>
+
+<!-- 6 -->
+<section><h2>6. Quantization: making the weights smaller</h2>
+<ul class="chain">
+<li><b>Challenge:</b> 70B at FP16 is 140 GB, which exceeds one GPU.</li>
+<li><b>What costs the memory?</b> Bytes per weight. Do we need 16 bits of precision for each?</li>
+<li><b>Not really.</b> Weights cluster in a narrow range, so map them onto fewer levels: <code>q = round((w-min)/scale)</code>, and later <code>w ≈ q*scale+min</code>.</li>
+<li class="a"><b>Trade-off:</b> fewer bits means a smaller model and less memory traffic, but more rounding error. Drag the bits (outline = original, green = quantized).</li></ul>
+<div class="box"><input type="range" id="bits" min="1" max="8" value="4" oninput="quant()"><div id="qi" class="lab"></div><div class="q" id="qb"></div></div></section>
+
+<!-- 7 -->
+<section><h2>7. Latency vs throughput, and batching</h2>
+<ul class="chain">
+<li><b>Challenge:</b> generating one token means reading all the weights from VRAM, and that read dominates the time.</li>
+<li><b>What if 8 requests share that read?</b> The same weights are loaded once, and each adds only a little extra math.</li>
+<li><b>So a bigger batch means more tokens per second overall.</b> But every request now waits for a slightly longer step, which is worse latency for each user.</li>
+<li class="a"><b>Hence the trade-off:</b> throughput up, per-user latency up. Past the compute limit, a bigger batch only adds delay. Slide it.</li></ul>
+<div class="box"><input type="range" id="b" min="1" max="128" value="1" oninput="batch()"><div id="bi"></div>
+<div class="lab">Throughput (tokens/s)</div><div class="bar"><i id="thr" style="background:var(--ac)"></i></div>
+<div class="lab">Latency per token (ms)</div><div class="bar"><i id="lat" style="background:var(--warn)"></i></div>
+<div class="lab">Model: step time = 20 ms to read weights + 0.4 ms per extra request (illustrative numbers)</div></div></section>
+
+<!-- 8 -->
+<section><h2>8. Model serving: vLLM and Triton</h2>
+<ul class="chain">
+<li><b>Challenge:</b> requests arrive at random times and finish at different lengths. Static batching waits for the slowest request, so finished slots sit idle.</li>
+<li><b>Fix:</b> <i>continuous batching</i>. The moment one request finishes, a waiting one takes its slot. Watch both below.</li>
+<li><b>New problem:</b> the KV cache grows unpredictably, and reserving max length per request wastes VRAM. vLLM's <i>PagedAttention</i> stores it in small fixed blocks, like OS memory pages, allocated on demand.</li>
+<li class="a"><b>Where does Triton fit?</b> Triton Inference Server is a general model server: many frameworks (TensorRT, ONNX, PyTorch), HTTP/gRPC endpoints, dynamic batching, and multiple model instances per GPU. vLLM is specialised for LLM generation. Use Triton for a mixed fleet of models, vLLM for LLM throughput (or vLLM as a Triton backend).</li></ul>
+<div class="box"><button onclick="toggleSim()" id="sb">Start</button>
+<div class="lab">Static batching, finished: <b id="sd">0</b></div><div id="ls"></div>
+<div class="lab">Continuous batching, finished: <b id="cd">0</b></div><div id="lc"></div>
+<div class="lab">Blue = generating a token, grey = idle slot</div></div></section>
+
+<p class="sub">Chain recap: matrix math is parallel → GPU + CUDA → container needs host driver (Toolkit) → Kubernetes counts GPUs (device plugin) → model must fit VRAM → quantize → batch for throughput → continuous batching and paging (vLLM/Triton) keep the GPU busy.</p>
+
+<script>
+const $=id=>document.getElementById(id);
+// 1
+function mk(id,n){$(id).innerHTML='<div class="cell"></div>'.repeat(n)}
+mk('cpu',256);mk('gpu',256);
+let rt;function race(){clearInterval(rt);document.querySelectorAll('#cpu .cell,#gpu .cell').forEach(c=>c.className='cell');
+let c=0,g=0,t=0;const cc=$('cpu').children,gc=$('gpu').children;
+rt=setInterval(()=>{t++;
+for(let i=0;i<8&&c<256;i++)cc[c++].classList.add('on');
+for(let i=0;i<128&&g<256;i++)gc[g++].classList.add('on2');
+$('rs').textContent='tick '+t+' | CPU '+c+'/256 | GPU '+g+'/256';
+if(c>=256)clearInterval(rt)},180)}
+// 2
+const A=[1,2,3,4,5,6,7,8,9,10,11,12],B=A.map(x=>x*10);
+(function(){let h='';for(let b=0;b<3;b++){h+='<span class="blk">';for(let t=0;t<4;t++)h+='<span class="th" data-b="'+b+'" data-t="'+t+'" onclick="pick(this)">b'+b+'t'+t+'</span>';h+='</span>'}
+$('blks').innerHTML=h;$('ca').innerHTML='A '+A.map(x=>'<span>'+x+'</span>').join('');$('cb').innerHTML='B '+B.map(x=>'<span>'+x+'</span>').join('');$('cc').innerHTML='C '+A.map(()=>'<span>?</span>').join('')})();
+function pick(e){document.querySelectorAll('.th').forEach(x=>x.classList.remove('sel'));e.classList.add('sel');
+const b=+e.dataset.b,t=+e.dataset.t;$('tinfo').textContent='i = '+b+' * 4 + '+t+' = '+(b*4+t)+' → this thread computes C['+(b*4+t)+'] = '+A[b*4+t]+' + '+B[b*4+t]}
+function launch(){const th=document.querySelectorAll('.th'),cs=$('cc').querySelectorAll('span');
+th.forEach((x,i)=>{x.classList.add('on');cs[i].textContent=A[i]+B[i];cs[i].classList.add('on')})}
+function resetK(){document.querySelectorAll('.th').forEach(x=>x.classList.remove('on','sel'));$('cc').querySelectorAll('span').forEach(s=>{s.textContent='?';s.classList.remove('on')});$('tinfo').textContent='Click a thread.'}
+// 3
+const TS=[[['t_c'],'The image has your app and CUDA user libraries, but no kernel driver. It cannot see a GPU yet.'],[['t_h'],'You run with --gpus all. The NVIDIA runtime hook intercepts container creation before the app starts.'],[['t_h','t_d'],'The hook asks the host which GPUs exist, then bind-mounts /dev/nvidia0 and the host libcuda.so into the container.'],[['t_c','t_h','t_d'],'App calls CUDA → libcuda → host driver → GPU. nvidia-smi works inside, and the image stays portable.']];
+let ti=0;function tstep(d){ti=Math.max(0,Math.min(3,ti+d));['t_c','t_h','t_d'].forEach(i=>$(i).classList.toggle('hi',TS[ti][0].includes(i)));$('tt').textContent=TS[ti][1]}tstep(0);
+// 4
+let free,col=0;function resetN(){free=[4,4];col=0;draw([[],[]]);$('nmsg').textContent=''}
+let slots=[[],[]];
+function draw(s){slots=s;$('nodes').innerHTML=[0,1].map(n=>'<div class="node"><b>Node '+(n+1)+'</b> ('+free[n]+' free) '+Array.from({length:4},(_,i)=>{const v=s[n][i];return '<span class="slot '+(v?'u'+(v.c):'')+'">'+(v?v.p:'')+'</span>'}).join('')+'</div>').join('')}
+let pc=0;function place(k){pc++;const c=pc%3+1;for(let n=0;n<2;n++){if(free[n]>=k){for(let j=0;j<k;j++)slots[n].push({c:c==1?'':c,p:'P'+pc});free[n]-=k;draw(slots);$('nmsg').textContent='Pod P'+pc+' scheduled on node '+(n+1)+'.';return}}
+$('nmsg').innerHTML='<span class="bad">Pod P'+pc+' is Pending: no node has '+k+' free GPUs (Insufficient nvidia.com/gpu).</span>'}
+resetN();
+// 5
+function vram(){const P=+$('m').value,by=+$('p').value,cx=+$('cx').value,b=+$('bt').value,G=+$('g').value;
+const w=P*by,kv=0.5*(P/7)*cx*b/1024,oh=2,tot=w+kv+oh,sc=Math.max(G,tot);
+const seg=(v,c,l)=>'<i style="width:'+v/sc*100+'%;background:'+c+'">'+(v/sc>.08?l:'')+'</i>';
+$('vb').innerHTML=seg(w,'var(--ac)','weights')+seg(kv,'var(--ac2)','KV')+seg(oh,'var(--mut)','')+(tot<G?'<i style="width:'+(G-tot)/sc*100+'%"></i>':'');
+$('vt').innerHTML='Weights <b>'+w.toFixed(1)+' GB</b> + KV cache <b>'+kv.toFixed(1)+' GB</b> + overhead '+oh+' GB = <b>'+tot.toFixed(1)+' GB</b> vs '+G+' GB VRAM: '+(tot<=G?'<span class="ok">fits</span>':'<span class="bad">out of memory</span>')}
+vram();
+// 6
+const W=[.12,.9,.35,.7,.2,.55,.95,.05,.45,.78];
+function quant(){const b=+$('bits').value,L=2**b-1;let err=0;
+$('qb').innerHTML=W.map(w=>{const q=Math.round(w*L)/L;err+=Math.abs(q-w);return '<div><b style="height:'+w*100+'%"></b><i style="height:'+q*100+'%"></i></div>'}).join('');
+$('qi').textContent=b+' bits = '+(L+1)+' levels, '+(b/16*100).toFixed(0)+'% of FP16 size, avg error '+(err/W.length*100).toFixed(1)+'%'}
+quant();
+// 7
+function batch(){const b=+$('b').value,st=20+0.4*b,th=b/st*1000;
+$('bi').innerHTML='Batch <b>'+b+'</b>: step <b>'+st.toFixed(1)+' ms</b> per token, <b>'+th.toFixed(0)+'</b> tokens/s total, <b>'+(1000/st).toFixed(0)+'</b> tokens/s per user';
+$('thr').style.width=th/3000*100+'%';$('lat').style.width=st/80*100+'%'}
+batch();
+// 8
+let sim,reqs;const N=4,WD=18;
+function newReq(){return 3+Math.floor(Math.random()*13)}
+function reset8(){S={r:Array.from({length:N},newReq),d:0,x:0};C={r:Array.from({length:N},newReq),d:0,t:0};}
+let S,C;reset8();
+function tick(){
+S.r=S.r.map(v=>v>0?v-1:0);C.r=C.r.map(v=>v>0?v-1:0);
+if(S.r.every(v=>v==0)){S.d+=N;S.r=Array.from({length:N},newReq)}
+C.r=C.r.map(v=>{if(v==0){C.d++;return newReq()}return v});
+}
+function rend(){
+const lane=(r,tot)=>r.map(v=>'<div class="lane">'+Array.from({length:WD},(_,i)=>'<i class="'+(i<Math.min(v,WD)?'r':'d')+'"></i>').join('')+'</div>').join('');
+$('ls').innerHTML=lane(S.r);$('lc').innerHTML=lane(C.r);$('sd').textContent=S.d;$('cd').textContent=C.d}
+rend();
+function toggleSim(){if(sim){clearInterval(sim);sim=0;$('sb').textContent='Start';return}
+reset8();$('sb').textContent='Stop';sim=setInterval(()=>{tick();rend()},350)}
+</script></body></html>
