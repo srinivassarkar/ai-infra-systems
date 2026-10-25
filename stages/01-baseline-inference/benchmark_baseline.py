@@ -113,6 +113,18 @@ def main():
         default="Explain the difference between prefill and decode phases in LLM inference in 80 words.",
         help="Prompt text to evaluate",
     )
+    parser.add_argument(
+        "--model-size-gb",
+        type=float,
+        default=0.0,
+        help="Model memory footprint in VRAM (GB) to calculate achieved memory bandwidth",
+    )
+    parser.add_argument(
+        "--peak-bandwidth-gbps",
+        type=float,
+        default=0.0,
+        help="Hardware theoretical peak memory bandwidth in GB/s (e.g., 800 for M3 Ultra, 112 for GTX 1050 Ti)",
+    )
     args = parser.parse_args()
 
     print(f"============================================================")
@@ -162,6 +174,15 @@ def main():
         f" Throughput (tokens/sec) | {min(throughputs):7.1f} | {statistics.mean(throughputs):7.1f} | {max(throughputs):7.1f} | {sorted(throughputs)[int(0.9 * len(throughputs))]:7.1f} "
     )
     print(f"============================================================")
+
+    if args.model_size_gb > 0:
+        avg_throughput = statistics.mean(throughputs)
+        achieved_bw = args.model_size_gb * avg_throughput
+        print(f" Achieved Memory Bandwidth: {achieved_bw:.2f} GB/s")
+        if args.peak_bandwidth_gbps > 0:
+            bus_saturation = (achieved_bw / args.peak_bandwidth_gbps) * 100.0
+            print(f" Memory Bus Saturation:    {bus_saturation:.1f}% of theoretical peak ({args.peak_bandwidth_gbps:.1f} GB/s)")
+        print(f"============================================================")
 
 
 if __name__ == "__main__":
