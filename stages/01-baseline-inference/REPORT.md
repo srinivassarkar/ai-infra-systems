@@ -49,13 +49,21 @@ python stages/01-baseline-inference/benchmark_baseline.py \
 
 ### Node 1: NVIDIA GeForce GTX 1050 Ti (4 GB GDDR5 - 112 GB/s)
 
+**Telemetry Capture:** 2026-10-27 (CUDA 12.8, Native GCC/NVCC Build for `sm_61`, Tailscale endpoint `100.117.38.36:8080`)
+
 | Metric | Min | Avg | Max | P90 |
 | :--- | :--- | :--- | :--- | :--- |
-| **TTFT (ms)** | - | - | - | - |
-| **TPOT (ms/token)** | - | - | - | - |
-| **Throughput (tok/s)**| - | - | - | - |
-| **Achieved Bandwidth (GB/s)** | - | - | - | - |
-| **Bus Saturation (%)** | - | - | - | - |
+| **TTFT (ms)** | 99.8 | 331.7 | 1042.2 | 1042.2 |
+| **TPOT (ms/token)** | 19.1 | 24.2 | 42.4 | 42.4 |
+| **Throughput (tok/s)**| 23.0 | 34.6 | 44.8 | 44.8 |
+| **Achieved Bandwidth (GB/s)** | 25.30 | 38.04 | 49.28 | 49.28 |
+| **Bus Saturation (%)** | 22.6% | 34.0% | 44.0% | 44.0% |
+
+#### Telemetry Trace & Phase Deconstruction:
+* **Cold Cache (Iteration 1):** $\mathrm{TTFT} = 305.9\ \mathrm{ms}$. Server evaluated 49 prompt tokens in $131.44\ \mathrm{ms}$ ($2.68\ \mathrm{ms/tok}$, $372.81\ \mathrm{tok/s}$), demonstrating tight GEMM kernel execution on Pascal compute cores. Wire/Tailscale overhead accounted for $\sim 174.5\ \mathrm{ms}$.
+* **Warm Prefix Cache (Iterations 2–4):** Prefix caching (`LCP similarity 1.000`) dropped server prompt evaluation to $20.89 - 21.23\ \mathrm{ms}$ ($6.2\times$ prefill acceleration), yielding client-side wire $\mathrm{TTFT}$ of $99.8 - 106.3\ \mathrm{ms}$. (Iteration 5 experienced a Tailscale network packet jitter event yielding wire $\mathrm{TTFT} = 1042.2\ \mathrm{ms}$ despite identical server-side prefill of $21.20\ \mathrm{ms}$).
+* **Autoregressive Decode Stability:** Server-side token generation remained anchored at $20.48 - 21.64\ \mathrm{ms}$ per token ($\sim 46.2 - 48.8\ \mathrm{tok/s}$ pure decode throughput).
+* **Bus Saturation Analysis:** Achieved $38.04\ \mathrm{GB/s}$ average bandwidth ($34.0\%$ of the $112\ \mathrm{GB/s}$ theoretical bus ceiling, peaking at $44.0\%$).
 
 ### Node 2: Apple Mac Studio M3 Ultra (256 GB UMA - 800 GB/s)
 
@@ -79,7 +87,40 @@ python stages/01-baseline-inference/benchmark_baseline.py \
 
 ## 5. Architectural Findings & Roofline Analysis
 
-* **Empirical Ridge Point:** [To be calculated: $I_{\mathrm{ridge}} = \frac{\mathrm{Peak\ TFLOPS}}{\mathrm{Peak\ Bandwidth}}$]
-* **Observed Bus Efficiency:** [Analysis of achieved GB/s versus theoretical peak]
-* **Prefill vs Decode Variance:** [Empirical observations comparing TTFT variance against steady-state TPOT variance]
+### 1. Empirical Ridge Point & Operational Regimes
+
+The hardware Roofline model defines the operational boundary between memory-bandwidth-bound and compute-bound regimes via the machine balance or Ridge Point ($I_{\mathrm{ridge}}$):
+
+$$I_{\mathrm{ridge}} = \frac{\mathrm{Peak\ Compute\ (TFLOPS)}}{\mathrm{Peak\ Memory\ Bandwidth\ (TB/s)}}$$
+
+* **NVIDIA GTX 1050 Ti:**
+  $$\mathrm{Peak\ FP32} \approx 2.1\ \mathrm{TFLOPS},\quad \mathrm{Peak\ Bandwidth} = 0.112\ \mathrm{TB/s} \implies I_{\mathrm{ridge}} \approx 18.75\ \mathrm{FLOP/byte}$$
+* **Apple Mac Studio M3 Ultra:**
+  $$\mathrm{Peak\ FP16} \approx 56\ \mathrm{TFLOPS},\quad \mathrm{Peak\ Bandwidth} = 0.800\ \mathrm{TB/s} \implies I_{\mathrm{ridge}} \approx 70.0\ \mathrm{FLOP/byte}$$
+
+### 2. Autoregressive Decode Arithmetic Intensity ($I_{\mathrm{decode}}$)
+
+In single-token autoregressive generation ($\mathrm{batch\ size} = 1$), each forward step performs $2 \times P$ floating-point operations for a model with $P$ parameters, while transferring the entire weight tensor of size $P \times B_{\mathrm{weight}}$ bytes from VRAM into compute registers. For 4-bit quantization ($B_{\mathrm{weight}} \approx 0.5\ \mathrm{bytes/param}$):
+
+$$I_{\mathrm{decode}} \approx \frac{2 \times P\ \mathrm{FLOPs}}{0.5 \times P\ \mathrm{bytes}} = 4.0\ \mathrm{FLOP/byte}$$
+
+Because $I_{\mathrm{decode}} = 4.0\ \mathrm{FLOP/byte} \ll I_{\mathrm{ridge}}$ on both machines ($4.0 \ll 18.75$ and $4.0 \ll 70.0$), **single-stream autoregressive decode is strictly memory-bandwidth bound on both architectures**. 
+
+### 3. Decode Speedup: M3 Ultra vs GTX 1050 Ti
+
+* **Node 1 (GTX 1050 Ti):** Steady-state server decode latency is **$20.48\ \mathrm{ms/token}$** ($48.8\ \mathrm{tok/s}$).
+* **Node 2 (Mac Studio M3 Ultra):** Steady-state server decode latency is **$4.50\ \mathrm{ms/token}$** ($221.6\ \mathrm{tok/s}$).
+* **Empirical Speedup:**
+  $$\mathrm{Speedup} = \frac{20.48\ \mathrm{ms}}{4.50\ \mathrm{ms}} \approx 4.55\times$$
+The M3 Ultra decodes $4.55\times$ faster directly due to its $7.14\times$ wider memory bus ($800\ \mathrm{GB/s}$ vs $112\ \mathrm{GB/s}$) and larger on-chip cache hierarchy.
+
+### 4. Memory Bus Saturation Discrepancy (34.0% vs 14.2%)
+
+* On the **GTX 1050 Ti**, the 128-bit GDDR5 bus ($112\ \mathrm{GB/s}$) is narrow enough that streaming $1.1\ \mathrm{GB}$ at $48.8\ \mathrm{tok/s}$ approaches physical bus limits, yielding **$34.0\% - 44.0\%$ bus saturation**.
+* On the **Mac Studio M3 Ultra**, the massive $800\ \mathrm{GB/s}$ UMA pipe easily sustains $221.6\ \mathrm{tok/s}$ with only **$14.2\%$ bus saturation**. The remaining $85\%$ of bandwidth remains idle because at $\mathrm{concurrency} = 1$, the memory controller spends clock cycles idling between kernel dispatches.
+* **Production Takeaway:** To fully saturate an Apple Silicon M-series memory bus or modern datacenter H100 GPU, continuous batching ($\mathrm{concurrency} > 16$) or large-parameter weights ($70\mathrm{B}+$) are required to amortize kernel dispatch latency and drive arithmetic intensity toward $I_{\mathrm{ridge}}$.
+
+### 5. Prefix Caching Efficiency
+
+Across both platforms, `llama.cpp`'s Longest Common Prefix (LCP) slot caching reduced prompt evaluation time by **$6.2\times$** on CUDA ($131.4\ \mathrm{ms} \to 20.9\ \mathrm{ms}$) and **$15.2\times$** on Apple Metal ($213.2\ \mathrm{ms} \to 14.1\ \mathrm{ms}$). In real-world multi-turn conversational agents, prompt caching provides the single largest empirical latency reduction before physical silicon limits are reached.
 
