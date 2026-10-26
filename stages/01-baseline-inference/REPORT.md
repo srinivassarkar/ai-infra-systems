@@ -59,13 +59,21 @@ python stages/01-baseline-inference/benchmark_baseline.py \
 
 ### Node 2: Apple Mac Studio M3 Ultra (256 GB UMA - 800 GB/s)
 
+**Telemetry Capture:** 2026-10-26 (Release b11901 Metal ARM64, Tailscale endpoint `100.102.40.99:8080`)
+
 | Metric | Min | Avg | Max | P90 |
 | :--- | :--- | :--- | :--- | :--- |
-| **TTFT (ms)** | - | - | - | - |
-| **TPOT (ms/token)** | - | - | - | - |
-| **Throughput (tok/s)**| - | - | - | - |
-| **Achieved Bandwidth (GB/s)** | - | - | - | - |
-| **Bus Saturation (%)** | - | - | - | - |
+| **TTFT (ms)** | 92.1 | 170.4 | 415.0 | 415.0 |
+| **TPOT (ms/token)** | 4.2 | 4.8 | 5.6 | 5.6 |
+| **Throughput (tok/s)**| 48.9 | 103.4 | 137.1 | 137.1 |
+| **Achieved Bandwidth (GB/s)** | 53.79 | 113.71 | 150.81 | 150.81 |
+| **Bus Saturation (%)** | 6.7% | 14.2% | 18.9% | 18.9% |
+
+#### Telemetry Trace & Phase Deconstruction:
+* **Cold Cache (Iteration 1):** $\mathrm{TTFT} = 415.0\ \mathrm{ms}$. Server evaluated 49 prompt tokens in $213.21\ \mathrm{ms}$ ($4.35\ \mathrm{ms/tok}$, $229.82\ \mathrm{tok/s}$), with $\sim 201.8\ \mathrm{ms}$ attributable to TCP/Tailscale handshake, HTTP framing, and client stream initiation.
+* **Warm Prefix Cache (Iterations 2–5):** Prefix caching (`LCP similarity 1.000`) successfully reused 48/49 prompt tokens. Server prompt evaluation dropped to $14.05 - 17.05\ \mathrm{ms}$ ($15.2\times$ prefill acceleration), bringing wire $\mathrm{TTFT}$ down to $92.1 - 106.4\ \mathrm{ms}$.
+* **Autoregressive Decode Stability:** $\mathrm{TPOT}$ remained exceptionally deterministic between $4.2\ \mathrm{ms}$ and $5.6\ \mathrm{ms}$ per token ($\sim 187 - 222\ \mathrm{tok/s}$ decode rate).
+* **Bus Saturation Analysis:** Achieved $113.71\ \mathrm{GB/s}$ ($14.2\%$ of the $800\ \mathrm{GB/s}$ theoretical bus ceiling). Because $Qwen2.5\text{-}1.5B$ has a footprint of only $\sim 1.1\ \mathrm{GB}$, single-tenant ($\mathrm{concurrency} = 1$) decode is bounded by memory latency and Metal kernel launch overhead rather than bus saturation. Higher concurrency batching or larger parameter weights ($70\mathrm{B}+$) are required to saturate the $800\ \mathrm{GB/s}$ UMA pipe.
 
 ---
 
