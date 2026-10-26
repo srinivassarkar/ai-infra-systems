@@ -69,26 +69,41 @@ This deterministic telemetry is essential for computing our Roofline arithmetic 
 
 ## Execution Guide
 
-### 1. Fetch Native Prebuilt Binaries
+### 1. Fetch & Build Standalone `llama-server`
 
-Download and extract the official standalone `llama-server` binary for your target silicon from the `ggml-org/llama.cpp` release distribution (`b11901`):
+#### On Node 1 (Ubuntu 20.04 LTS, NVIDIA GTX 1050 Ti - CUDA 12.8):
+*Prebuilt GitHub release binaries fail on Ubuntu 20.04 due to glibc 2.38 / libssl3 dependencies. Build locally from source linking against local glibc 2.31:*
 
-#### On Node 1 (Linux x86_64, NVIDIA GTX 1050 Ti - CUDA 12.8):
 ```bash
+# 1. Ensure modern CMake (>= 3.22) and CUDA 12.8 nvcc are in PATH
+pip3 install --upgrade cmake
+export PATH=/usr/local/cuda-12.8/bin:$PATH
+
+# 2. Clone and build specifically for Pascal (sm_61) without libcurl dependency
 mkdir -p ~/llama-bin && cd ~/llama-bin
-curl -L -o llama-cuda-linux.tar.gz \
-  "https://github.com/ggml-org/llama.cpp/releases/download/b11901/llama-b11901-bin-ubuntu-cuda-12.8-x64.tar.gz"
-tar -xzf llama-cuda-linux.tar.gz
-chmod +x build/bin/llama-server
+if [ ! -d "llama.cpp" ]; then
+  git clone https://github.com/ggml-org/llama.cpp
+fi
+cd llama.cpp
+rm -rf build
+
+cmake -B build \
+  -DGGML_CUDA=ON \
+  -DCMAKE_CUDA_ARCHITECTURES=61 \
+  -DLLAMA_CURL=OFF \
+  -DCMAKE_BUILD_TYPE=Release
+
+cmake --build build --target llama-server -j $(nproc)
 ```
 
 #### On Node 2 (Apple Mac Studio, M3 Ultra - Metal):
 ```bash
+# Download official standalone b11901 Metal release binary
 mkdir -p ~/llama-bin && cd ~/llama-bin
 curl -L -o llama-metal-macos.tar.gz \
   "https://github.com/ggml-org/llama.cpp/releases/download/b11901/llama-b11901-bin-macos-arm64.tar.gz"
 tar -xzf llama-metal-macos.tar.gz
-chmod +x build/bin/llama-server
+chmod +x llama-b11901/llama-server
 ```
 
 ---
@@ -106,19 +121,19 @@ curl -L -o ~/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf \
 
 ### 3. Launch the Native `llama-server` Daemon
 
-Run the server with full layer offloading and explicit context sizing:
+Run the server with full layer offloading (`-ngl 99`) and explicit context window sizing (`-c 2048`):
 
 ```bash
-# On Linux GTX 1050 Ti (4 GB VRAM - 112 GB/s):
-~/llama-bin/build/bin/llama-server \
+# On NVIDIA Server (100.117.38.36 / GTX 1050 Ti - 4 GB GDDR5):
+~/llama-bin/llama.cpp/build/bin/llama-server \
   -m ~/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf \
   -ngl 99 \
   -c 2048 \
   --port 8080 \
   --host 0.0.0.0
 
-# On Mac Studio M3 Ultra (256 GB UMA - 800 GB/s):
-~/llama-bin/build/bin/llama-server \
+# On Mac Studio M3 Ultra (100.102.40.99 / 256 GB UMA):
+~/llama-bin/llama-b11901/llama-server \
   -m ~/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf \
   -ngl 99 \
   -c 2048 \
@@ -133,18 +148,18 @@ Run the server with full layer offloading and explicit context sizing:
 From your development environment, execute the Stage 01 profiling benchmark against the active server:
 
 ```bash
-# Against Node 1 (GTX 1050 Ti - 112 GB/s peak, ~1.1 GB model footprint):
+# Against NVIDIA Server (100.117.38.36 - GTX 1050 Ti, 112 GB/s peak):
 python stages/01-baseline-inference/benchmark_baseline.py \
-  --endpoint http://<node-1-ip>:8080/v1/chat/completions \
-  --model qwen2.5-coder-1.5b \
+  --endpoint http://100.117.38.36:8080/v1/chat/completions \
+  --model qwen2.5-coder:1.5b \
   --samples 5 \
   --model-size-gb 1.1 \
   --peak-bandwidth-gbps 112
 
-# Against Node 2 (M3 Ultra - 800 GB/s peak, ~1.1 GB model footprint):
+# Against Mac Studio M3 Ultra (100.102.40.99 - M3 Ultra, 800 GB/s peak):
 python stages/01-baseline-inference/benchmark_baseline.py \
-  --endpoint http://<node-2-ip>:8080/v1/chat/completions \
-  --model qwen2.5-coder-1.5b \
+  --endpoint http://100.102.40.99:8080/v1/chat/completions \
+  --model qwen2.5-coder:1.5b \
   --samples 5 \
   --model-size-gb 1.1 \
   --peak-bandwidth-gbps 800
