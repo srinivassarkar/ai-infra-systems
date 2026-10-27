@@ -87,15 +87,18 @@ def profile_single_stream(
         itls_ms.append((token_timestamps[i] - token_timestamps[i - 1]) * 1000.0)
 
     tpot_ms = (decode_duration_s / (received_tokens - 1) * 1000.0) if received_tokens > 1 else 0.0
-    throughput = received_tokens / total_duration_s if total_duration_s > 0 else 0.0
+    decode_tok_per_sec = ((received_tokens - 1) / decode_duration_s) if decode_duration_s > 0 and received_tokens > 1 else 0.0
+    e2e_throughput = received_tokens / total_duration_s if total_duration_s > 0 else 0.0
 
     return {
         "tokens": received_tokens,
         "ttft_ms": ttft_ms,
         "tpot_ms": tpot_ms,
         "itls_ms": itls_ms,
-        "throughput_tok_per_sec": throughput,
+        "decode_tok_per_sec": decode_tok_per_sec,
+        "e2e_throughput_tok_per_sec": e2e_throughput,
         "total_duration_s": total_duration_s,
+        "decode_duration_s": decode_duration_s,
     }
 
 
@@ -147,7 +150,7 @@ def main():
 
         results.append(res)
         print(
-            f" Done! Tokens: {res['tokens']} | TTFT: {res['ttft_ms']:.1f}ms | TPOT: {res['tpot_ms']:.1f}ms | Throughput: {res['throughput_tok_per_sec']:.1f} tok/s"
+            f" Done! Tokens: {res['tokens']} | TTFT: {res['ttft_ms']:.1f}ms | TPOT: {res['tpot_ms']:.1f}ms | Decode: {res['decode_tok_per_sec']:.1f} tok/s | E2E: {res['e2e_throughput_tok_per_sec']:.1f} tok/s"
         )
         time.sleep(0.5)
 
@@ -157,32 +160,37 @@ def main():
 
     ttfts = [r["ttft_ms"] for r in results]
     tpots = [r["tpot_ms"] for r in results]
-    throughputs = [r["throughput_tok_per_sec"] for r in results]
+    decode_speeds = [r["decode_tok_per_sec"] for r in results]
+    e2e_throughputs = [r["e2e_throughput_tok_per_sec"] for r in results]
 
-    print(f"\n============================================================")
+    print(f"\n==========================================================================")
     print(f" BENCHMARK SUMMARY (N = {len(results)})")
-    print(f"============================================================")
-    print(f" Metric                  |   Min   |   Avg   |   Max   |   P90   ")
+    print(f"==========================================================================")
+    print(f" Metric                  |   Min   |  Median |   Avg   |   Max   ")
     print(f"-------------------------+---------+---------+---------+---------")
     print(
-        f" TTFT (ms)               | {min(ttfts):7.1f} | {statistics.mean(ttfts):7.1f} | {max(ttfts):7.1f} | {sorted(ttfts)[int(0.9 * len(ttfts))]:7.1f} "
+        f" TTFT (ms)               | {min(ttfts):7.1f} | {statistics.median(ttfts):7.1f} | {statistics.mean(ttfts):7.1f} | {max(ttfts):7.1f} "
     )
     print(
-        f" TPOT (ms/token)         | {min(tpots):7.1f} | {statistics.mean(tpots):7.1f} | {max(tpots):7.1f} | {sorted(tpots)[int(0.9 * len(tpots))]:7.1f} "
+        f" TPOT (ms/token)         | {min(tpots):7.1f} | {statistics.median(tpots):7.1f} | {statistics.mean(tpots):7.1f} | {max(tpots):7.1f} "
     )
     print(
-        f" Throughput (tokens/sec) | {min(throughputs):7.1f} | {statistics.mean(throughputs):7.1f} | {max(throughputs):7.1f} | {sorted(throughputs)[int(0.9 * len(throughputs))]:7.1f} "
+        f" Decode Speed (tok/s)    | {min(decode_speeds):7.1f} | {statistics.median(decode_speeds):7.1f} | {statistics.mean(decode_speeds):7.1f} | {max(decode_speeds):7.1f} "
     )
-    print(f"============================================================")
+    print(
+        f" End-to-End Speed (tok/s)| {min(e2e_throughputs):7.1f} | {statistics.median(e2e_throughputs):7.1f} | {statistics.mean(e2e_throughputs):7.1f} | {max(e2e_throughputs):7.1f} "
+    )
+    print(f"==========================================================================")
 
     if args.model_size_gb > 0:
-        avg_throughput = statistics.mean(throughputs)
-        achieved_bw = args.model_size_gb * avg_throughput
-        print(f" Achieved Memory Bandwidth: {achieved_bw:.2f} GB/s")
+        # Physical decode memory bandwidth: ModelSize (GB) * Decode Throughput (tok/s)
+        avg_decode_speed = statistics.mean(decode_speeds)
+        achieved_bw = args.model_size_gb * avg_decode_speed
+        print(f" Achieved Decode Memory Bandwidth: {achieved_bw:.2f} GB/s (Model: {args.model_size_gb:.2f} GB)")
         if args.peak_bandwidth_gbps > 0:
             bus_saturation = (achieved_bw / args.peak_bandwidth_gbps) * 100.0
-            print(f" Memory Bus Saturation:    {bus_saturation:.1f}% of theoretical peak ({args.peak_bandwidth_gbps:.1f} GB/s)")
-        print(f"============================================================")
+            print(f" Memory Bus Saturation:           {bus_saturation:.1f}% of theoretical peak ({args.peak_bandwidth_gbps:.1f} GB/s)")
+        print(f"==========================================================================")
 
 
 if __name__ == "__main__":

@@ -58,12 +58,14 @@ This deterministic telemetry is essential for computing our Roofline arithmetic 
    $$\mathrm{TTFT} = t_{\mathrm{first}} - t_{\mathrm{start}}$$
 2. **TPOT (Time-Per-Output-Token / Inter-Token Latency):**
    $$\mathrm{TPOT} = \frac{t_{\mathrm{end}} - t_{\mathrm{first}}}{N_{\mathrm{out}} - 1}$$
-3. **System Output Throughput:**
-   $$\mathrm{Throughput} = \frac{N_{\mathrm{out}}}{t_{\mathrm{total}}}$$
-4. **Achieved Memory Bandwidth:**
-   $$\mathrm{BW}_{\mathrm{achieved}} = \mathrm{ModelSize}_{\mathrm{VRAM}} \times \mathrm{Throughput}$$
-5. **Memory Bus Saturation Percentage:**
-   $$\mathrm{Saturation} = \frac{\mathrm{BW}_{\mathrm{achieved}}}{\mathrm{BW}_{\mathrm{peak}}} \times 100\%$$
+3. **Autoregressive Decode Throughput:**
+   $$\mathrm{Throughput}_{\mathrm{decode}} = \frac{N_{\mathrm{out}} - 1}{t_{\mathrm{end}} - t_{\mathrm{first}}} = \frac{1}{\mathrm{TPOT}}$$
+4. **End-to-End System Throughput:**
+   $$\mathrm{Throughput}_{\mathrm{e2e}} = \frac{N_{\mathrm{out}}}{t_{\mathrm{total}}}$$
+5. **Achieved Decode Memory Bandwidth:**
+   $$\mathrm{BW}_{\mathrm{decode}} = \mathrm{ModelSize}_{\mathrm{VRAM}} \times \mathrm{Throughput}_{\mathrm{decode}}$$
+6. **Memory Bus Saturation Percentage:**
+   $$\mathrm{Saturation} = \frac{\mathrm{BW}_{\mathrm{decode}}}{\mathrm{BW}_{\mathrm{peak}}} \times 100\%$$
 
 ---
 
