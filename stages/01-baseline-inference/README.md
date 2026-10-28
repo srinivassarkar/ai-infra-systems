@@ -1,201 +1,135 @@
 # Stage 01: Baseline Inference Profiling
 
-## Objective
-Measure and isolate the fundamental performance characteristics of large language model serving before introducing concurrency, proxies, or optimization techniques.
+## The Core Question
+Before adding complex optimizations, load balancers, or proxies, we must answer one fundamental question:
+**How fast does a single large language model generate text on different physical hardware when only one user is requesting it?**
 
-Specifically:
-1. **Deconstruct TTFT (Time-To-First-Token):** Measure prompt prefill latency as a function of prompt token length and isolate compute prefill from network transport.
-2. **Deconstruct TPOT (Time-Per-Output-Token):** Measure autoregressive decode token generation latency across single-token iterations.
-3. **Establish Baseline Throughput:** Measure raw generation speed in tokens per second under single-tenant (concurrency = 1) streaming conditions.
-4. **Quantify Memory Bus Saturation:** Calculate achieved memory bandwidth versus theoretical hardware bus ceilings across three distinct silicon architectures.
-5. **Network Topology Ablation:** Quantify the exact impact of network round-trip time (RTT) on client-perceived TTFT versus streaming token arrival.
+This is our baseline. Every future optimization (continuous batching, KV-cache quantization, speculative decoding, edge proxies) will be judged against these numbers.
 
 ---
 
-## The 3-Tier Silicon Hardware Fleet
+## The 3 Hardware Archetypes Evaluated
 
-To avoid single-hardware bias, baseline inference is benchmarked across three fundamentally distinct hardware and memory paradigms:
+Rather than testing only one machine, we profile the exact same model (`Qwen2.5-Coder-1.5B-Instruct-Q4_K_M`, ~986 MB) across three fundamentally different hardware and memory architectures:
 
-```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                             THE 3-TIER SILICON FLEET                             │
-├─────────────────────────┬──────────────────────────┬─────────────────────────────┤
-│ Node 1: Constrained     │ Node 2: Unified Memory   │ Node 3: Cloud Enterprise    │
-│ Edge CUDA               │ Workstation (Apple UMA)  │ Datacenter (NVIDIA Ada)     │
-├─────────────────────────┼──────────────────────────┼─────────────────────────────┤
-│ NVIDIA GeForce          │ Apple Mac Studio         │ NVIDIA L4                   │
-│ GTX 1050 Ti             │ M3 Ultra                 │ (Cloud Pod - Delhi)         │
-│                         │                          │                             │
-│ • VRAM: 4 GB GDDR5      │ • RAM: 256 GB LPDDR5X    │ • VRAM: 24 GB GDDR6 (ECC)   │
-│ • Bus: 128-bit PCIe 3.0 │ • Bus: Unified Memory    │ • Bus: 192-bit PCIe 4.0     │
-│ • Peak BW: 112 GB/s     │ • Peak BW: 800 GB/s      │ • Peak BW: 300 GB/s         │
-│ • Arch: Pascal (sm_61)  │ • Arch: Apple Metal GPU  │ • Arch: Ada Lovelace (sm_89)│
-│ • L2 Cache: 768 KB      │ • System Cache: 128 MB   │ • L2 Cache: 48 MB           │
-└─────────────────────────┴──────────────────────────┴─────────────────────────────┘
-```
+1. **Node 1: Edge Consumer GPU (NVIDIA GTX 1050 Ti - 4 GB GDDR5)**
+   * *Architecture:* Pascal (`sm_61`), 128-bit memory bus, 112 GB/s peak bandwidth, PCIe 3.0 x16.
+   * *Purpose:* Represents budget, power-constrained edge hardware.
+2. **Node 2: Unified Memory Workstation (Apple Mac Studio M3 Ultra - 256 GB LPDDR5X)**
+   * *Architecture:* 80 GPU cores, Unified Memory Architecture (UMA), 800 GB/s peak bandwidth.
+   * *Purpose:* Represents high-end unified silicon where CPU, GPU, and RAM share a single zero-copy memory pool.
+3. **Node 3: Enterprise Cloud GPU (NVIDIA L4 - 24 GB GDDR6)**
+   * *Architecture:* Ada Lovelace (`sm_89`), 192-bit bus, 300 GB/s peak bandwidth, 48 MB L2 cache, PCIe 4.0 x16.
+   * *Purpose:* Represents modern cost-effective cloud datacenter serving (~₹40/hr on RACE).
 
 ---
 
-## Architecture & Network Topologies
+## Quickstart: Step-by-Step Reproduction
 
-```
-Topology A: Distributed Wire Benchmark (Nodes 1, 2, and 3-Remote)
-[ Workstation Client (benchmark_baseline.py) ]
-                    │
-                    │ HTTP/1.1 POST /v1/chat/completions (stream: true)
-                    │ Tailscale WireGuard Encrypted Mesh (WAN / LAN)
-                    ▼
-[ llama-server (Port 8080 - Native C++ Daemon) ]
-                    │
-                    ▼
-[ Physical Silicon (GDDR5 / GDDR6 / Unified LPDDR5X) ]
+Follow these exact steps to reproduce the baseline on any Linux/Mac environment:
 
-----------------------------------------------------------------------------------
-
-Topology B: Zero-Wire On-Chip Baseline (Node 3-Local)
-[ On-Pod Client (benchmark_baseline.py) ] ──▶ loopback (127.0.0.1:8080) ──▶ [ llama-server ]
-* Eliminates network transport delay to isolate pure on-chip prompt prefill compute.
-```
-
----
-
-## Architectural Decision Record (ADR): Why Raw `llama-server` over High-Level Wrappers
-
-For an empirical systems engineering reliability lab, we explicitly select raw **`llama-server` (`llama.cpp`)** over high-level runtime wrappers such as Ollama or vLLM based on three architectural distinctions:
-
-### 1. Zero-Overhead Silicon Telemetry
-High-level wrappers like Ollama wrap `llama.cpp` dynamic libraries within a Go daemon. This introduces Go runtime garbage collection pauses, HTTP-to-IPC serialization latency, and uncommanded background idle-unload routines (`keep_alive=5m`). 
-
-Raw `llama-server` is written in pure C++ using `httplib`. The HTTP stream reads directly from the model execution context in memory with zero intermediate proxy layers, guaranteeing that recorded TTFT and TPOT latencies reflect physical silicon rather than runtime wrapper overhead.
-
-### 2. Granular Kernel & Memory Levers
-Ollama conceals low-level parameters behind heuristic defaults. In contrast, `llama-server` exposes explicit command-line controls required for our 10-stage investigations:
-* `-lm, --load-mode {mmap, none, dio, mlock}`: Explicitly toggles memory-mapped virtual memory paging, eager DRAM allocation, Direct I/O, or locked physical pages (vital for Stage 02 cold-start profiling).
-* `-fa`: Toggles FlashAttention kernels to test memory bandwidth bound vs. compute bound regimes.
-* `-ngl <layers>`: Explicitly partitions layers across GPU VRAM and CPU system RAM to measure PCIe bus saturation.
-* `-c <tokens>`: Locks exact context window allocations to measure KV-cache memory pressure without magic fallback defaults (vital for Stage 04).
-
-### 3. Deterministic Hardware Accounting on Boot
-Upon startup, `llama-server` emits a precise byte-level breakdown of VRAM allocations to `stdout`:
-* Model weight footprint in physical VRAM
-* Dedicated KV-cache tensor size (`kv_self`)
-* Compute scratch buffer allocations
-
-This deterministic telemetry is essential for computing our Roofline arithmetic intensity and memory bus saturation percentages.
-
----
-
-## Metrics Formulas
-
-```text
-1. Time-To-First-Token (TTFT):
-   TTFT = t_first_token - t_request_start
-   Decomposition: TTFT = TTFT_prefill_compute + RTT_network + t_framing
-
-2. Time-Per-Output-Token (TPOT / Inter-Token Latency):
-   TPOT = (t_end - t_first_token) / (N_out - 1)
-
-3. Autoregressive Decode Throughput:
-   Throughput_decode = (N_out - 1) / (t_end - t_first_token) = 1 / TPOT  [tokens/sec]
-
-4. End-to-End System Throughput:
-   Throughput_e2e = N_out / t_total  [tokens/sec]
-
-5. Achieved Decode Memory Bandwidth:
-   BW_decode = Model_Size_GB * Throughput_decode = Model_Size_GB / TPOT  [GB/s]
-
-6. Memory Bus Saturation Percentage:
-   Saturation = (BW_decode / BW_peak) * 100%
-```
-
----
-
-## Execution Guide: Running the Benchmarks Across All 3 Nodes
-
-### 1. Download Model Weights (`Qwen2.5-Coder-1.5B-Q4_K_M`)
-Download the identical ~986 MB GGUF weights across all nodes:
+### Step 1: Download Model Weights (Identical Across All Nodes)
 ```bash
-mkdir -p ~/models
-curl -L -o ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
+mkdir -p ~/models && cd ~/models
+curl -L -o Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
   "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
 ```
 
----
+### Step 2: Get `llama-server` Binary
 
-### 2. Launch the `llama-server` Daemon
+* **On Linux with CUDA (e.g., Ubuntu 24.04 with NVIDIA L4):**
+  ```bash
+  mkdir -p ~/llama-bin && cd ~/llama-bin
+  wget https://github.com/ggml-org/llama.cpp/releases/download/b11963/llama-b11963-bin-ubuntu-cuda-12.8-x64.tar.gz
+  tar -xzf llama-b11963-bin-ubuntu-cuda-12.8-x64.tar.gz
+  ```
 
-#### On Node 1 (GTX 1050 Ti - 4 GB GDDR5, Tailscale: 100.117.38.36):
+* **On macOS (Apple Silicon Metal):**
+  ```bash
+  mkdir -p ~/llama-bin && cd ~/llama-bin
+  curl -L -o llama-metal-macos.tar.gz \
+    "https://github.com/ggml-org/llama.cpp/releases/download/b11901/llama-b11901-bin-macos-arm64.tar.gz"
+  tar -xzf llama-metal-macos.tar.gz
+  ```
+
+### Step 3: Launch `llama-server` in the Background
+
+Run the server with full GPU layer offloading (`-ngl 99`) and locked 2048 context window (`-c 2048`):
+
 ```bash
-~/llama-bin/llama.cpp/build/bin/llama-server \
+# On Linux CUDA (adjust paths to your binary and model):
+export LD_LIBRARY_PATH=~/llama-bin/llama-b11963:$LD_LIBRARY_PATH
+nohup ~/llama-bin/llama-b11963/llama-server \
   -m ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
   -ngl 99 \
   -c 2048 \
   --port 8080 \
-  --host 0.0.0.0
+  --host 0.0.0.0 > server.log 2>&1 &
 ```
 
-#### On Node 2 (Mac Studio M3 Ultra - 256 GB UMA, Tailscale: 100.102.40.99):
+Verify that the server is ready:
 ```bash
-~/llama-bin/llama-b11901/llama-server \
-  -m ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
-  -ngl 99 \
-  -c 2048 \
-  --port 8080 \
-  --host 0.0.0.0
+curl http://127.0.0.1:8080/health
+# Expected output: {"status":"ok"}
 ```
 
-#### On Node 3 (NVIDIA L4 Pod - 24 GB GDDR6, Tailscale: 100.85.128.0):
+### Step 4: Run the Benchmark Profiler
+
+Clone the repository and run the profiler:
 ```bash
-LD_LIBRARY_PATH=/workspace/ai-infra/llama-b11963 nohup /workspace/ai-infra/llama-b11963/llama-server \
-  -m /workspace/ai-infra/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
-  -ngl 99 \
-  -c 2048 \
-  --port 8080 \
-  --host 0.0.0.0 > /workspace/ai-infra/server.log 2>&1 &
-```
+git clone https://github.com/srinivassarkar/ai-infra-systems.git
+cd ai-infra-systems/stages/01-baseline-inference
 
----
-
-### 3. Execute the Profiling Harness
-
-#### Run 1: Node 1 (GTX 1050 Ti - 112 GB/s Peak) Over Tailscale:
-```bash
-python stages/01-baseline-inference/benchmark_baseline.py \
-  --endpoint http://100.117.38.36:8080/v1/chat/completions \
-  --model Qwen2.5-Coder-1.5B \
-  --samples 5 \
-  --model-size-gb 0.986 \
-  --peak-bandwidth-gbps 112.0
-```
-
-#### Run 2: Node 2 (Mac Studio M3 Ultra - 800 GB/s Peak) Over Tailscale:
-```bash
-python stages/01-baseline-inference/benchmark_baseline.py \
-  --endpoint http://100.102.40.99:8080/v1/chat/completions \
-  --model Qwen2.5-Coder-1.5B \
-  --samples 5 \
-  --model-size-gb 0.986 \
-  --peak-bandwidth-gbps 800.0
-```
-
-#### Run 3: Node 3 Local (NVIDIA L4 - 300 GB/s Peak) On-Pod Loopback (Zero-Wire):
-Execute inside the L4 pod terminal:
-```bash
-python3 /workspace/ai-infra/repo/stages/01-baseline-inference/benchmark_baseline.py \
+# 1. Local execution (zero network overhead, 0 ms wire):
+python3 benchmark_baseline.py \
   --endpoint http://127.0.0.1:8080/v1/chat/completions \
   --model Qwen2.5-Coder-1.5B \
   --samples 5 \
   --model-size-gb 0.986 \
   --peak-bandwidth-gbps 300.0
-```
 
-#### Run 4: Node 3 Remote (NVIDIA L4 - 300 GB/s Peak) Over Tailscale WAN:
-Execute from your workstation terminal:
-```bash
-python stages/01-baseline-inference/benchmark_baseline.py \
-  --endpoint http://100.85.128.0:8080/v1/chat/completions \
+# 2. Remote execution across Tailscale (e.g. from your laptop to the cloud pod):
+python3 benchmark_baseline.py \
+  --endpoint http://<TAILSCALE_IP>:8080/v1/chat/completions \
   --model Qwen2.5-Coder-1.5B \
   --samples 5 \
   --model-size-gb 0.986 \
   --peak-bandwidth-gbps 300.0
 ```
+
+---
+
+## The Core Metrics Explained Simply
+
+Every benchmark run produces a summary table. Here is what each metric physically represents:
+
+```text
+1. Time-To-First-Token (TTFT):
+   How long the user waits before the first word appears on screen.
+   TTFT = Prefill Compute Time + Network Round-Trip Time + HTTP Framing
+
+2. Time-Per-Output-Token (TPOT / Inter-Token Latency):
+   How long it takes the GPU to generate each subsequent word.
+   TPOT = (Total Generation Time - TTFT) / (Output Tokens - 1)
+
+3. Decode Throughput (Speed in tok/s):
+   How many tokens the model outputs per second while writing.
+   Decode Speed = 1 / TPOT
+
+4. Achieved Decode Memory Bandwidth (GB/s):
+   For every token generated, the GPU must read the entire model from memory.
+   Achieved Bandwidth = Model Size (GB) * Decode Speed (tok/s)
+
+5. Memory Bus Saturation (%):
+   How much of the GPU's physical memory pipe is being utilized.
+   Saturation = (Achieved Bandwidth / Hardware Peak Bandwidth) * 100%
+```
+
+---
+
+## Architectural Decision Record (ADR): Why Raw `llama-server`?
+
+We deliberately test raw C++ `llama-server` rather than high-level frameworks like Ollama:
+1. **Zero Runtime Noise:** Ollama wraps `llama.cpp` inside a Go daemon, which adds garbage collection pauses, HTTP-to-IPC serialization, and auto-unload timeouts (`keep_alive`). Raw `llama-server` reads directly from the model context in memory with zero intermediate proxy layers.
+2. **Deterministic Hardware Allocation:** `llama-server` prints exact byte-level VRAM allocations (weight buffer, KV-cache, scratch space) directly on boot, which is required for mathematical Roofline validation.
+3. **Explicit Kernel Levers:** Exposes direct CLI control over memory-mapping (`-lm`), context size (`-c`), and GPU offloading (`-ngl`) needed for our 10 progressive engineering stages.
