@@ -1,83 +1,122 @@
-# Stage 02: Cold-Start Behavior & Virtual Memory Paging (`mmap`)
+# Stage 02: Cold-Start Behavior & Virtual Memory Paging
 
-## 1. Objective & Hypothesis
-
-When an LLM inference service boots or scales out in response to incoming traffic, it incurs a **cold-start latency penalty**. This stage deconstructs the operating system, virtual memory, and hardware interconnect mechanisms that govern cold-start behavior.
-
-### Architectural Hypothesis
-1. **`--mmap` (Default Lazy Virtual Paging):** Calls `mmap(2)` to map the GGUF file descriptor directly into the process's Virtual Memory Area (VMA). Physical pages are **not** loaded eagerly into DRAM; they are faulted into memory on first touch.
-   * *Prediction:* Server `Time-to-Ready` ($t_{\mathrm{ready}}$) will be near-instantaneous ($< 150\ \mathrm{ms}$), but the **first inference request will pay the page-fault penalty**, yielding inflated $\mathrm{TTFT}$.
-2. **`--no-mmap` (Eager Physical DRAM Allocation):** Allocates heap memory via `malloc()` and reads weights sequentially from storage into physical RAM via `read(2)` syscalls prior to signaling health.
-   * *Prediction:* Server `Time-to-Ready` will be substantially slower (proportional to disk read throughput), but the **first inference request will execute with zero page-fault latency**, matching warm steady-state execution.
-3. **The Interconnect Divergence (PCIe vs Unified Memory):**
-   * **Node 1 (Linux CUDA):** Weights follow a 4-hop path: $\text{Disk} \to \text{OS Page Cache} \to \text{Host DRAM} \to \text{PCIe 3.0 Bus} \to \text{GPU VRAM}$.
-   * **Node 2 (Apple Metal UMA):** Weights follow a 2-hop zero-copy path: $\text{Disk} \to \text{OS Page Cache / Unified DRAM} \to \text{Metal GPU Buffer Pointer}$.
+## The Core Question
+When an LLM inference service scales out from zero under incoming user traffic, how long does it take before the first word is generated?
+More importantly: **Does memory-mapping (`mmap`) actually eliminate cold-start latency, or is it an architectural illusion on GPU hardware?**
 
 ---
 
-## 2. The 4-Tier Cold-Start Taxonomy
+## The Central Architectural Finding
 
-To avoid methodological contamination from the OS filesystem buffer cache, we evaluate four distinct operational states:
-
-| State | Lifecycle Phase | OS Page Cache State | Physical Hardware Reality |
-| :--- | :--- | :--- | :--- |
-| **C0 (True Cold)** | Daemon not running | **Purged** (`drop_caches` / `purge`) | True cold I/O from storage media (NVMe/SSD). |
-| **C1 (Warm Cache Cold)** | Daemon not running | **Populated in RAM** | Process boot without disk penalty; memory copy/map only. |
-| **C2 (Unwarmed Engine)** | Daemon running, `/health` 200 | Populated in RAM | First request ever with `--no-warmup`; uninitialized CUDA/Metal kernels. |
-| **C3 (Fully Warm)** | Daemon running, serving traffic | Populated in RAM | Steady-state inference with warm kernels and pre-faulted memory. |
+> **"On discrete PCIe GPUs with `-ngl 99`, `mmap` vs `no-mmap` is a false dichotomy for cold-start latency. The CUDA device memory copy forces eager population at process launch. The real `mmap` virtual memory trade-off exists exclusively for CPU inference or Apple Silicon Unified Memory."**
 
 ---
 
-## 3. Metrics Deconstruction
+## The Physical Mechanisms Explained
 
-Cold start must not be conflated with simple $\mathrm{TTFT}$. We isolate two independent latency phases:
+When an inference daemon loads a ~1 GB model (`Qwen2.5-Coder-1.5B`), it behaves fundamentally differently depending on whether it targets a discrete GPU or the CPU:
 
 ```
-[ Process Launch ] ───────────────▶ [ /health Returns 200 ] ───────────────▶ [ First Output Token ]
-        │                                    │                                      │
-        └────────── t_ready ─────────────────┴────────── first_token_TTFT ──────────┘
-        │                                                                           │
-        └────────────────── t_first_useful_token (Total Cold Start) ────────────────┘
-```
+Scenario A: Discrete PCIe GPU (-ngl 99)
+[ GGUF File on Disk ] ──▶ [ Host OS Page Cache ] ──▶ [ PCIe 4.0 Bus DMA Copy ] ──▶ [ GPU GDDR6 VRAM ]
+* The GPU CANNOT execute from host CPU RAM.
+* To offload layers, the CUDA driver MUST issue cudaMemcpy to push all weights into VRAM at startup.
+* This copy forces the OS to read all pages immediately, completely defeating lazy virtual memory paging!
+* Result: t_ready is identical (~1050 ms) regardless of whether mmap is ON or OFF.
 
-1. **Time-to-Ready ($t_{\mathrm{ready}}$):**
-   Time elapsed from process spawn until the `/health` endpoint returns HTTP 200 (returns HTTP 503 while initializing).
-2. **First-Request TTFT ($\mathrm{TTFT}_{\mathrm{first}}$):**
-   Client-measured Time-To-First-Token on the virgin inference request immediately following a healthy probe. Must be executed with `"cache_prompt": false` to prevent prefix-cache masking.
-3. **Total Cold-Start Latency ($t_{\mathrm{useful}}$):**
-   $$t_{\mathrm{useful}} = t_{\mathrm{ready}} + \mathrm{TTFT}_{\mathrm{first}}$$
+Scenario B: CPU / Shared Memory (-ngl 0)
+[ GGUF File on Disk ] ──▶ [ Virtual Memory Pointer (mmap) ] ──▶ [ CPU Execution Cores ]
+* There is no PCIe bus transfer.
+* With mmap ON: The server boots in 1322 ms without reading all bytes into heap memory upfront.
+* With mmap OFF: The server boots in 1701 ms (+379 ms slower) because it sequentially reads all bytes into RAM.
+```
 
 ---
 
-## 4. Cache Dropping Protocols (Enforcing C0)
+## Quickstart: Step-by-Step Reproduction Guide
 
-Prior to executing a C0 true-cold trial, the operating system page cache must be explicitly purged:
+Follow these exact steps to reproduce the cold-start benchmarks:
 
-### On Linux (Node 1 - GTX 1050 Ti):
+### 1. Ensure the Model Weights and Binary Are Present
 ```bash
-# Sync dirty pages to disk and purge pagecache, dentries, and inodes
-sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+# Model path:
+~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf
+
+# Standalone llama-server binary:
+~/llama-bin/llama-b11963/llama-server
 ```
 
-### On macOS (Node 2 - Mac Studio M3 Ultra):
-```bash
-# Force purge of inactive disk and OS memory cache
-sudo purge
-```
-
----
-
-## 5. Automated Execution Harness
-
-The experiment is orchestrated via `benchmark_cold_start.py`, which manages server lifecycles, monitors `/health` transitions, executes virgin requests without prompt caching, and records byte allocations from startup logs.
+### 2. Run the Benchmark Across the 5 Test Permutations
 
 ```bash
-# Example execution on Node 1 (Linux):
-python stages/02-cold-start-behavior/benchmark_cold_start.py \
-  --server-bin ~/llama-bin/llama.cpp/build/bin/llama-server \
-  --model ~/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf \
-  --ngl 99 \
-  --ctx-size 2048 \
-  --port 8080
+cd ai-infra-systems/stages/02-cold-start-behavior
+
+# Run 1: Discrete GPU with default lazy mmap & warmup (Baseline)
+python3 benchmark_cold_start.py \
+  --server-bin ~/llama-bin/llama-b11963/llama-server \
+  --model ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf
+
+# Run 2: Discrete GPU with eager heap allocation (--no-mmap)
+python3 benchmark_cold_start.py \
+  --server-bin ~/llama-bin/llama-b11963/llama-server \
+  --model ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
+  --no-mmap
+
+# Run 3: Discrete GPU with uninitialized kernels (--no-warmup)
+python3 benchmark_cold_start.py \
+  --server-bin ~/llama-bin/llama-b11963/llama-server \
+  --model ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
+  --no-warmup
+
+# Run 4: CPU Paging with lazy mmap (--ngl 0 --no-warmup)
+python3 benchmark_cold_start.py \
+  --server-bin ~/llama-bin/llama-b11963/llama-server \
+  --model ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
+  --no-warmup \
+  --ngl 0
+
+# Run 5: CPU Paging with eager DRAM allocation (--no-mmap --no-warmup --ngl 0)
+python3 benchmark_cold_start.py \
+  --server-bin ~/llama-bin/llama-b11963/llama-server \
+  --model ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
+  --no-mmap \
+  --no-warmup \
+  --ngl 0
 ```
 
+---
+
+## The Metrics Explained Simply
+
+```text
+1. Time-to-Ready (t_ready):
+   Elapsed time from process spawn until the /health endpoint returns HTTP 200.
+   Measures: Disk I/O + VRAM weight allocation + PCIe DMA transfer time.
+
+2. First-Request TTFT:
+   Time-To-First-Token on the virgin inference request immediately following startup.
+   Measures: Prompt prefill compute + CUDA kernel compilation / memory graph initialization.
+
+3. Time-to-First-Useful-Token (Total Cold Start):
+   Total latency experienced by an end-user during a scale-from-zero event.
+   Formula: Total Cold Start = t_ready + First_Request_TTFT
+
+4. Steady-State Warm TTFT:
+   Time-To-First-Token on subsequent requests with pre-compiled GPU kernels.
+```
+
+---
+
+## Architectural Decision Record (ADR): Deprecation of `--no-mmap`
+
+During empirical testing against `llama.cpp` build `b11963`, we identified that the legacy boolean flag `--no-mmap` has been deprecated and replaced with an explicit multi-mode loading parameter:
+
+```bash
+-lm, --load-mode MODE
+  auto: mmap (default)
+  none: eager heap allocation (replaces legacy --no-mmap)
+  dio:  Direct I/O (bypasses OS filesystem page cache completely)
+  mlock: locks pages in RAM to prevent OS swapping under memory pressure
+```
+
+Our profiler (`benchmark_cold_start.py`) detects and supports both modern `--load-mode` and legacy syntax automatically.
