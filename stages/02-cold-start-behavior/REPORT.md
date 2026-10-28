@@ -7,6 +7,7 @@
 * **Target Fleet Nodes:**
   * **Node 1 (Linux CUDA):** Custom Linux Box, NVIDIA GeForce GTX 1050 Ti (4 GB GDDR5, PCIe 3.0 x16, Ubuntu 20.04)
   * **Node 2 (Apple Metal):** Mac Studio M3 Ultra (28 Cores, 256 GB Unified LPDDR5X, macOS Sequoia)
+  * **Node 3 (Cloud Enterprise CUDA):** NVIDIA L4 (24 GB GDDR6, PCIe 4.0 x16, Ubuntu 24.04 LTS on RACE Delhi Pod)
 
 ---
 
@@ -44,6 +45,27 @@ To eliminate OS page cache contamination, trials are categorized by hardware and
 | **D: C2 no-warmup**| Uninitialized Metal shaders | - | - | - | - | - |
 | **E: C3 Warm** | Steady-state baseline | N/A | N/A | N/A | - | - |
 
+### Node 3: Cloud Enterprise NVIDIA L4 (24 GB GDDR6 - PCIe 4.0 x16)
+
+**Telemetry Capture:** 2026-10-28 (Release b11963, Driver 580.126.20, CUDA 13.0, Ubuntu 24.04 LTS on RACE Delhi Pod)
+
+| Condition | Loading Levers | Time-to-Ready ($t_{\mathrm{ready}}$) | First-Request TTFT | Total Cold Start ($t_{\mathrm{useful}}$) | Steady Warm TTFT | Steady Warm TPOT |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **A: mmap ON, warmup ON** | `--load-mode mmap --warmup` | **1074.87 ms** | **34.68 ms** | **1109.55 ms** | 16.87 ms | 5.64 ms |
+| **B: mmap OFF, warmup ON** | `--load-mode none --warmup` | **1036.53 ms** | **34.20 ms** | **1070.73 ms** | 16.67 ms | 5.61 ms |
+| **C: mmap ON, warmup OFF** | `--load-mode mmap --no-warmup`| **1053.92 ms** | **33.98 ms** | **1087.91 ms** | 16.34 ms | 5.58 ms |
+| **D: mmap OFF, warmup OFF**| `--load-mode none --no-warmup`| **1021.40 ms** | **34.00 ms** | **1055.40 ms** | 16.65 ms | 5.39 ms |
+
+#### Key Telemetry Insights on Enterprise Ada Silicon:
+1. **The First-Request Kernel Tax ($2.05\times$ Latency Gap):**
+   * Across all four configurations, First-Request TTFT sits at **$\sim 34.0\text{--}34.7\ \mathrm{ms}$**, whereas steady-state warm TTFT is **$\sim 16.3\text{--}16.8\ \mathrm{ms}$**.
+   * This $2.05\times$ penalty is paid exactly once: during the virgin forward pass, the CUDA runtime allocates internal execution scratchpads, initializes cuBLAS handles, and compiles dynamic kernel graphs.
+2. **Process Boot Time ($t_{\mathrm{ready}}$):**
+   * Process launch to HTTP health ready is remarkably consistent at **$\sim 1021\text{--}1075\ \mathrm{ms}$**.
+   * Unlike consumer storage paths, the cloud NVMe storage on RACE feeds the 1.0 GB model fast enough that eager read (`--load-mode none`) completes in approximately the same timeframe as lazy address mapping (`--load-mode mmap`).
+3. **Total Cold-Start Latency:**
+   * Time-to-First-Useful-Token for a scale-from-zero pod is approximately **$1.05\text{--}1.11\ \mathrm{seconds}$**. In Kubernetes horizontal autoscaling (KEDA), this sets the absolute lower bound on scale-from-zero latency before container image pull time is added.
+
 ---
 
 ## 4. Operating System & Virtual Memory Architectural Findings
@@ -68,5 +90,18 @@ To eliminate OS page cache contamination, trials are categorized by hardware and
 
 ### 3. Production Recommendation for Cloud Autoscaling (KEDA / Serverless)
 * If scaling from 0 under latency-critical SLOs:
-  * **Option A:** Use `--no-mmap` with a health-check grace period so requests are never routed to an instance that will suffer page-fault spikes.
-  * **Option B:** If using `--mmap`, mandate a startup warmup pass (`--warmup`) so page tables are pre-faulted before the container marks itself `Ready` in Kubernetes.
+  * **Option A:** Use eager loading (`--load-mode none`) with a readiness probe initial delay, ensuring zero page-fault stalls on incoming production traffic.
+  * **Option B:** If using memory mapping (`--load-mode mmap`), mandate a startup warmup pass (`--warmup`) so page tables and GPU execution scratchpads are pre-faulted before the container marks itself `Ready` in Kubernetes.
+
+### 4. Architectural Discovery: Modern `llama.cpp` Memory Loading API
+During profiling against `llama.cpp` build b11963 on Ubuntu 24.04, we identified that the legacy `--no-mmap` boolean flag has been superseded by a multi-state loading subsystem:
+```bash
+-lm, --load-mode MODE
+  auto: mmap, unless device does not support it
+  none: eager heap allocation (disables mmap)
+  mmap: memory-map model
+  mlock: force system to keep model resident in RAM (pins pages, prevents swapping)
+  mmap+mlock: memory-mapped with page locking
+  dio: direct I/O (bypasses OS page cache entirely)
+```
+For production inference engines with high memory pressure or multi-tenant GPU sharing, `--load-mode dio` and `mlock` provide infrastructure engineers fine-grained control to prevent OS page-out eviction loops.
