@@ -87,24 +87,26 @@ This deterministic telemetry is essential for computing our Roofline arithmetic 
 
 ## Metrics Formulas
 
-1. **TTFT (Time-To-First-Token):**
-   $$\mathrm{TTFT} = t_{\mathrm{first}} - t_{\mathrm{start}}$$
-   *Decomposition:* $\mathrm{TTFT} = \mathrm{TTFT}_{\mathrm{prefill\_compute}} + \mathrm{RTT}_{\mathrm{network}} + t_{\mathrm{framing}}$
+```text
+1. Time-To-First-Token (TTFT):
+   TTFT = t_first_token - t_request_start
+   Decomposition: TTFT = TTFT_prefill_compute + RTT_network + t_framing
 
-2. **TPOT (Time-Per-Output-Token / Inter-Token Latency):**
-   $$\mathrm{TPOT} = \frac{t_{\mathrm{end}} - t_{\mathrm{first}}}{N_{\mathrm{out}} - 1}$$
+2. Time-Per-Output-Token (TPOT / Inter-Token Latency):
+   TPOT = (t_end - t_first_token) / (N_out - 1)
 
-3. **Autoregressive Decode Throughput:**
-   $$\mathrm{Throughput}_{\mathrm{decode}} = \frac{N_{\mathrm{out}} - 1}{t_{\mathrm{end}} - t_{\mathrm{first}}} = \frac{1}{\mathrm{TPOT}}$$
+3. Autoregressive Decode Throughput:
+   Throughput_decode = (N_out - 1) / (t_end - t_first_token) = 1 / TPOT  [tokens/sec]
 
-4. **End-to-End System Throughput:**
-   $$\mathrm{Throughput}_{\mathrm{e2e}} = \frac{N_{\mathrm{out}}}{t_{\mathrm{total}}}$$
+4. End-to-End System Throughput:
+   Throughput_e2e = N_out / t_total  [tokens/sec]
 
-5. **Achieved Decode Memory Bandwidth:**
-   $$\mathrm{BW}_{\mathrm{decode}} = \mathrm{ModelSize}_{\mathrm{GB}} \times \mathrm{Throughput}_{\mathrm{decode}} = \frac{\mathrm{ModelSize}_{\mathrm{GB}}}{\mathrm{TPOT}_{\mathrm{seconds}}}$$
+5. Achieved Decode Memory Bandwidth:
+   BW_decode = Model_Size_GB * Throughput_decode = Model_Size_GB / TPOT  [GB/s]
 
-6. **Memory Bus Saturation Percentage:**
-   $$\mathrm{Saturation} = \frac{\mathrm{BW}_{\mathrm{decode}}}{\mathrm{BW}_{\mathrm{peak}}} \times 100\%$$
+6. Memory Bus Saturation Percentage:
+   Saturation = (BW_decode / BW_peak) * 100%
+```
 
 ---
 

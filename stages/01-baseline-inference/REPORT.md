@@ -15,18 +15,26 @@
 
 ## 2. Hypothesis & Architectural Ground Truth
 
-In a single-tenant ($\mathrm{concurrency} = 1$) streaming scenario with warm model weights:
+In a single-tenant (concurrency = 1) streaming scenario with warm model weights:
 
-1. **Prefill Phase (TTFT):** Dominated by compute-bound prompt evaluation ($\mathcal{O}(N_{\mathrm{prompt}})$ GEMM operations). Silicon compute capacity (TFLOPS) determines prefill latency.
-2. **Decode Phase (TPOT):** Autoregressively memory-bandwidth bound ($\mathcal{O}(1)$ GEMV operations). For every generated token, the entire active weight parameter tensor must be streamed from memory into the compute cores:
-   $$\mathrm{TPOT}_{\mathrm{theoretical}} \approx \frac{\mathrm{ModelSize}_{\mathrm{bytes}}}{\mathrm{MemoryBandwidth}_{\mathrm{bytes/sec}}}$$
-3. **Achieved Decode Memory Bandwidth:** 
-   Memory bandwidth utilized while generating tokens is governed strictly by the autoregressive decode throughput, decoupled from TTFT and network transfer overhead:
-   $$\mathrm{BW}_{\mathrm{decode}} = \mathrm{ModelSize}_{\mathrm{GB}} \times \mathrm{Throughput}_{\mathrm{decode}} = \frac{\mathrm{ModelSize}_{\mathrm{GB}}}{\mathrm{TPOT}_{\mathrm{seconds}}}$$
-4. **Memory Bus Saturation Percentage:**
-   $$\mathrm{Saturation} = \frac{\mathrm{BW}_{\mathrm{decode}}}{\mathrm{BW}_{\mathrm{peak}}} \times 100\%$$
-5. **Network RTT vs Prefill Decomposition:**
-   $$\mathrm{TTFT}_{\mathrm{observed}} = \mathrm{TTFT}_{\mathrm{prefill\_compute}} + \mathrm{RTT}_{\mathrm{network}} + t_{\mathrm{framing}}$$
+* **Prefill Phase (TTFT):** Dominated by compute-bound prompt evaluation ($\mathcal{O}(N_{\mathrm{prompt}})$ GEMM operations). Silicon compute capacity (TFLOPS) determines prefill latency.
+* **Decode Phase (TPOT):** Autoregressively memory-bandwidth bound ($\mathcal{O}(1)$ GEMV operations). For every generated token, the entire active weight parameter tensor must be streamed from memory into the compute cores.
+* **Network vs Prefill Latency Decomposition:**
+```text
+TTFT_observed = TTFT_prefill_compute + RTT_network + t_framing
+```
+* **Theoretical Minimum Decode Latency:**
+```text
+TPOT_theoretical = Model_Size_bytes / Memory_Bandwidth_bytes_per_sec
+```
+* **Achieved Decode Memory Bandwidth:** 
+```text
+BW_decode = Model_Size_GB * Throughput_decode = Model_Size_GB / TPOT_seconds
+```
+* **Memory Bus Saturation Percentage:**
+```text
+Saturation = (BW_decode / BW_peak) * 100%
+```
 
 ---
 
