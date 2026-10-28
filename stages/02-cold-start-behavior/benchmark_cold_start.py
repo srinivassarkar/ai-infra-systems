@@ -134,13 +134,25 @@ def run_single_trial(
         "--host", host,
     ]
 
+    # Handle mmap toggling across llama.cpp versions:
+    # Modern builds (b4000+) use -lm / --load-mode {mmap, none, dio, mlock}
+    # Legacy builds use --no-mmap
     if not mmap:
-        cmd.append("--no-mmap")
+        cmd.extend(["--load-mode", "none"])
+    else:
+        cmd.extend(["--load-mode", "mmap"])
+
     if not warmup:
         cmd.append("--no-warmup")
 
     print(f"[*] Spawning server: {' '.join(cmd)}")
     t_process_start = time.perf_counter()
+
+    # Pass LD_LIBRARY_PATH pointing to server binary directory
+    env = os.environ.copy()
+    server_dir = os.path.dirname(os.path.abspath(server_bin))
+    current_ld = env.get("LD_LIBRARY_PATH", "")
+    env["LD_LIBRARY_PATH"] = f"{server_dir}:{current_ld}" if current_ld else server_dir
 
     # Launch daemon
     proc = subprocess.Popen(
@@ -149,6 +161,7 @@ def run_single_trial(
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        env=env,
     )
 
     health_url = f"http://{host}:{port}/health"
@@ -156,8 +169,15 @@ def run_single_trial(
 
     healthy, ready_duration_s = poll_health_endpoint(health_url, timeout_s=90.0)
     if not healthy:
+        poll_status = proc.poll()
+        stdout_tail = ""
+        if proc.stdout:
+            try:
+                stdout_tail = proc.stdout.read()
+            except Exception:
+                pass
         proc.kill()
-        return {"error": f"Server failed to become healthy within 90s. Status: {proc.poll()}"}
+        return {"error": f"Server failed to become healthy within 90s. Status: {poll_status}\nLogs:\n{stdout_tail[-1000:]}"}
 
     print(f"[*] Server healthy in {ready_duration_s * 1000.0:.1f}ms. Sending first-touch inference request...")
 
