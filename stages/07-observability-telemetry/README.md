@@ -1,5 +1,7 @@
 # Stage 07: Observability, Metrics & Telemetry (The Golden Signals of LLM Serving)
 
+> **Methodology Notice:** This stage evaluates LLM telemetry using a custom Ingress Telemetry Gateway (`telemetry_gateway.py`) that exports metrics in Prometheus text exposition format (Port 9090) and logs hierarchical trace spans structured per the OpenTelemetry schema (`telemetry_traces.jsonl`). No standalone Prometheus server, Loki daemon, or OpenTelemetry Collector was deployed in this local benchmark.
+
 ## 1. Executive Summary & The Core Architectural Defect
 
 In traditional microservices, Google's Four Golden Signals (Latency, Traffic, Errors, Saturation) are measured via standard HTTP request/response durations. In high-throughput LLM inference engines, standard metrics fail because **a single HTTP request contains two fundamentally different computational phases**:

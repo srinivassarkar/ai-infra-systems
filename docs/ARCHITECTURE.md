@@ -71,10 +71,6 @@ Unlike standard web APIs, LLM inference introduces asymmetric resource bottlenec
    * **Readiness:** Is the model weights file loaded into silicon memory and warmed up?
 
 ### C. Telemetry Plane (Observability)
-* **Metrics:** Scraped via Prometheus every 5s (GPU memory, GPU compute utilization, KV cache usage percentage, request queue depth).
-* **Logs:** Structured JSON emitted to standard out, captured by Loki.
-* **Tracing:** OpenTelemetry spans measuring:
-  * Proxy latency
-  * Queue wait time (Time in Queue)
-  * TTFT (Time to First Token)
-  * TPOT (Time Per Output Token / Inter-Token Latency)
+* **Metrics:** Unified `/metrics` endpoint in Prometheus text exposition format (port 9090/9095), capturing TTFT, TPOT, GPU utilization, and slot saturation (designed for scraping by Prometheus).
+* **Logs & Traces:** Structured JSON trace spans emitted to `telemetry_traces.jsonl`, formatted to OpenTelemetry specification (Request -> Prefill -> Decode) without per-token cardinality explosion.
+*(Note: Standalone Prometheus, Loki, and OpenTelemetry Collector server daemons belong to the production cluster architecture; in this testbed, telemetry was generated and validated via the Stage 07 Telemetry Gateway).*

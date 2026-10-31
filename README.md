@@ -18,13 +18,13 @@ How does LLM inference fail, slow down, and recover on real hardware? One cohesi
 ```mermaid
 flowchart TD
     CL["Load Generator & Async Client<br/>(k6 / Python AsyncIO)"] -->|HTTP and SSE| NG["Nginx edge proxy<br/>buffering off"]
-    NG --> GW["Gateway<br/>queue, rate limit, health"]
-    GW --> RT["Serving runtime<br/>llama.cpp CUDA or mlx-lm"]
+    NG --> GW["Telemetry Gateway<br/>TTFT / TPOT tracking, traces, health"]
+    GW --> RT["Serving runtime<br/>llama.cpp (Metal / CUDA)"]
     RT --> N1["Node 1<br/>GTX 1050 Ti 4 GB"]
     RT --> N2["Node 2<br/>M3 Ultra 256 GB"]
     RT --> N3["Node 3<br/>NVIDIA L4 24 GB"]
-    RT -. metrics .-> OB["Prometheus, Loki, OpenTelemetry"]
-    NG -. metrics .-> OB
+    GW -. metrics .-> EX["Prometheus Exposition<br/>/metrics Endpoint"]
+    GW -. traces .-> TR["Hierarchical Trace Log<br/>telemetry_traces.jsonl"]
 ```
 
 ---
@@ -75,7 +75,7 @@ flowchart TD
 | **04** | KV Cache Bloat & Memory Ceilings | **Software Simulation & Formula** | PagedAttention block table simulator + VRAM budget formula | Python Simulator (vLLM Model) |
 | **05** | Edge Streaming Reverse Proxy | **Physical Silicon Benchmark** | Unbuffered SSE load test + tuned Nginx proxy configs | M3 Ultra & NVIDIA L4 |
 | **06** | Chaos Injection & Daemon Recovery | **Physical Silicon Benchmark** | Fault injection harness (`SIGKILL`, `SIGSTOP`) + MTTR audit | M3 Ultra & NVIDIA L4 |
-| **07** | Observability, Metrics & Telemetry | **Physical Silicon Benchmark** | Telemetry gateway + Prometheus histograms + OTel spans | M3 Ultra & NVIDIA L4 |
+| **07** | Observability, Metrics & Telemetry | **Physical Silicon Benchmark** | Ingress Telemetry Gateway (`telemetry_gateway.py`) + Prometheus /metrics exposition + hierarchical trace log | M3 Ultra & NVIDIA L4 |
 | **08** | Serving Engine Ablation Matrix | **Physical Silicon Benchmark** | Runtime ablation suite (FlashAttention, `-ub 64`, Prefix Cache) | M3 Ultra & NVIDIA L4 |
 | **09** | Kubernetes Autoscaling & Scaling Lag | **Discrete-Event Simulation** | Scaling lag simulator (`simulate_scaling_lag.py`) + K8s manifests | Python Simulator (Lag Model) |
 | **10** | Capacity Planning & Token Economics | **Mathematical Economics Engine** | Hardware sizing engine + 24h diurnal cost calculator | Python Economics Engine |
@@ -92,7 +92,7 @@ flowchart TD
 | **04** | `[Software Simulation & Formula]` | **KV-Cache Budgeting:** Derived GQA formulas ($H_{\mathrm{kv}} = \frac{H_q}{G}$). Calculated 4 GB VRAM ceiling restricting GTX 1050 Ti to 12 slots at 4K context; modeled PagedAttention block allocation eliminating external memory fragmentation. | [Stage 04 Report](stages/04-memory-pressure-and-oom/REPORT.md) |
 | **05** | `[Physical Silicon]` | **Streaming Edge Proxy:** Verified unbuffered SSE delivery at 4 concurrent streams ($312.64\ \text{tok/s}$ aggregate): median ITL **12.88 ms**, P99 tail jitter **16.86 ms**, Max burst stutter **21.46 ms** (zero buffer bloat). | [Stage 05 Report](stages/05-streaming-and-edge-proxy/REPORT.md) |
 | **06** | `[Physical Silicon]` | **Chaos Engineering & MTTR:** Empirical MTTR of **2,674.33 ms** (P50: 2,661.99 ms) under hard SIGKILL. Empirically confirmed Gray Failure Paradox: `SIGSTOP` frozen thread keeps L4 TCP port open while L7 fails. | [Stage 06 Report](stages/06-failure-injection/REPORT.md) |
-| **07** | `[Physical Silicon]` | **Observability & Telemetry:** Verified native `llama-server` observability gap (missing TTFT/TPOT histograms). Telemetry gateway captured 4 streams (median TTFT **111.40 ms**, TPOT **13.92 ms/tok**) with zero per-token span explosion. | [Stage 07 Report](stages/07-observability-telemetry/REPORT.md) |
+| **07** | `[Physical Silicon]` | **Observability & Telemetry:** Verified native `llama-server` observability gap (missing TTFT/TPOT histograms). Custom Telemetry Gateway captured 4 streams (median TTFT **111.40 ms**, TPOT **13.92 ms/tok**), exporting Prometheus-compatible /metrics and hierarchical trace log with zero per-token span explosion. | [Stage 07 Report](stages/07-observability-telemetry/REPORT.md) |
 | **08** | `[Physical Silicon]` | **Serving Optimization Ablation:** FlashAttention unlocked **+31.9% decode throughput** on M3 Ultra ($104.8 \rightarrow 138.2\ \text{tok/s}$); chunked prefill (`-ub 64`) stabilized decode fluidity at invariant $137.3\ \text{tok/s}$; prefix caching collapsed TTFT by **$2.22\times$** (M3) and **$3.86\times$** (L4). | [Stage 08 Report](stages/08-serving-optimizations/REPORT.md) |
 | **09** | `[Discrete-Event Simulation]` | **Production Autoscaling Lag:** Simulated $51.73\ \text{s}$ pod scaling lag chain on Kubernetes; modeled why reactive HPA fails to protect TTFT SLOs without buffer headroom; simulated KEDA queue-depth triggers. | [Stage 09 Report](stages/09-production-deployment/REPORT.md) |
 | **10** | `[Capacity Economics Engine]` | **Dual-Constraint Capacity Planning:** Modeled latency knee binding at 32 concurrent slots on M3 Ultra vs 4,656 VRAM slots ($\min(N_{\mathrm{mem}}, N_{\mathrm{SLO}})$). Unit economics: $\$0.33 / 1\text{M}$ tokens at $100\%$ load; $33.3\%$ KEDA savings. | [Stage 10 Report](stages/10-capacity-planning/REPORT.md) |
@@ -122,15 +122,12 @@ ai-infra-systems/
 │   ├── 04-memory-pressure-and-oom/                      # KV cache budgeting & OOM avoidance
 │   ├── 05-streaming-and-edge-proxy/                     # SSE streaming & proxy buffer tuning
 │   ├── 06-failure-injection/                            # Chaos triage, SIGSTOP & MTTR
-│   ├── 07-observability-telemetry/                      # Prometheus, OTel & metrics gateway
+│   ├── 07-observability-telemetry/                      # Telemetry gateway, Prometheus exposition & trace log
 │   ├── 08-serving-optimizations/                        # FlashAttention, KV quant & prefix caching
 │   ├── 09-production-deployment/                        # KEDA autoscaling & scaling lag analysis
 │   └── 10-capacity-planning/                            # Dual-constraint sizing & TCO economics
 └── platform/
-    ├── ingress/                                         # Nginx configurations & buffer tuning
-    ├── gateway/                                         # Queue, scheduler, and health check daemons
-    ├── engine/                                          # Serving runtimes (llama.cpp / mlx-lm)
-    └── observability/                                   # Prometheus exporters, dashboards, and alerts
+    └── ingress/                                         # Nginx configurations & buffer tuning
 ```
 
 ---

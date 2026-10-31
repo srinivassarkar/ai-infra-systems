@@ -1,5 +1,7 @@
 # Stage 07: Observability, Metrics & Telemetry Report
 
+> **Methodology Notice:** This report presents telemetry captured by a custom Ingress Telemetry Gateway (`telemetry_gateway.py`) exposing metrics in Prometheus text format (Port 9090/9095) and writing hierarchical trace spans (`telemetry_traces.jsonl`) adhering to the OpenTelemetry schema. Standalone Prometheus, Loki, and OpenTelemetry Collector server daemons were not run in this stage.
+
 ## 1. Executive Summary & The Upstream Observability Gap
 
 High-throughput LLM serving platforms deviate radically from traditional stateless microservices. While traditional REST APIs evaluate latency as a monolithic duration from socket ingress to socket egress, LLM inference comprises two asynchronous, hardware-differentiated phases:
