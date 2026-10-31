@@ -4,8 +4,8 @@ chaos_recovery_harness.py - Stage 06 Failure Injection & Self-Healing Harness
 Author: Srinivas Sarkar (ai-infra-systems)
 
 Simulates production failure scenarios:
-1. Hard Process Failure (SIGKILL / kill -9) & MTTR Distribution across N trials
-2. Gray Failure (SIGSTOP / kill -STOP): Proves TCP Port Open while HTTP Health Probe Fails
+1. Gray Failure (SIGSTOP / kill -STOP): Proves TCP Port Open while HTTP Health Probe Fails
+2. Hard Process Failure (SIGKILL / kill -9) & MTTR Distribution across N trials
 3. Graceful Shutdown (SIGTERM / kill -15) Cleanup Time
 """
 
@@ -20,7 +20,7 @@ import urllib.request
 import urllib.error
 import json
 import statistics
-from typing import List, Dict, Tuple
+from typing import List
 
 DEFAULT_SERVER_BIN = "/root/llama-bin/llama-b11963/llama-server"
 DEFAULT_MODEL_PATH = "/root/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf"
@@ -72,15 +72,14 @@ def spawn_server(server_bin: str, model_path: str, port: int = PORT) -> subproce
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        preexec_fn=os.setsid
+        stderr=subprocess.DEVNULL
     )
     return proc
 
 
-def kill_proc_group(proc: subprocess.Popen, sig: int):
+def send_proc_signal(proc: subprocess.Popen, sig: int):
     try:
-        os.killpg(os.getpgid(proc.pid), sig)
+        proc.send_signal(sig)
     except (ProcessLookupError, OSError):
         pass
 
@@ -94,13 +93,13 @@ def test_sigstop_gray_failure(server_bin: str, model_path: str):
     print(f"[+] Server online (PID {proc.pid}). Both Layer 4 TCP and Layer 7 HTTP are OK.")
 
     print("\n[!] Injecting SIGSTOP (Simulating frozen GPU driver / kernel thread hang)...")
-    kill_proc_group(proc, signal.SIGSTOP)
+    send_proc_signal(proc, signal.SIGSTOP)
     time.sleep(0.5)
 
     tcp_ok = is_tcp_port_open(HOST, PORT)
     http_ok = is_http_healthy(HEALTH_URL, timeout=1.5)
 
-    print(f"[*] Layer 4 TCP Port Probe (SYN-ACK):   {'OPEN (PASS)' if tcp_ok else 'CLOSED (FAIL)'}")
+    print(f"[*] Layer 4 TCP Port Probe (SYN-ACK):    {'OPEN (PASS)' if tcp_ok else 'CLOSED (FAIL)'}")
     print(f"[*] Layer 7 HTTP Health Probe (/health): {'HEALTHY (PASS)' if http_ok else 'UNRESPONSIVE (FAIL)'}")
 
     if tcp_ok and not http_ok:
@@ -110,8 +109,11 @@ def test_sigstop_gray_failure(server_bin: str, model_path: str):
         print("    falsely route traffic to a dead pod, proving why HTTP L7 probes are mandatory.")
 
     # Cleanup
-    kill_proc_group(proc, signal.SIGKILL)
-    proc.wait()
+    send_proc_signal(proc, signal.SIGKILL)
+    try:
+        proc.wait(timeout=2.0)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def test_sigkill_mttr_distribution(server_bin: str, model_path: str, trials: int = 3) -> List[float]:
@@ -126,8 +128,11 @@ def test_sigkill_mttr_distribution(server_bin: str, model_path: str, trials: int
         
         # Inject SIGKILL
         t_kill = time.perf_counter()
-        kill_proc_group(proc, signal.SIGKILL)
-        proc.wait()
+        send_proc_signal(proc, signal.SIGKILL)
+        try:
+            proc.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            pass
 
         # Supervisor restart delay (simulating systemd RestartSec=1s)
         time.sleep(1.0)
@@ -139,8 +144,11 @@ def test_sigkill_mttr_distribution(server_bin: str, model_path: str, trials: int
         print(f"  Trial {trial}/{trials}: MTTR = {mttr_ms:.2f} ms (Recovered PID {proc_recovered.pid})")
 
         # Clean shutdown for next trial
-        kill_proc_group(proc_recovered, signal.SIGKILL)
-        proc_recovered.wait()
+        send_proc_signal(proc, signal.SIGKILL)
+        try:
+            proc_recovered.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            pass
         time.sleep(0.5)
 
     return mttrs
@@ -153,7 +161,8 @@ def main():
     parser.add_argument("--trials", type=int, default=3, help="Number of SIGKILL recovery trials")
     args = parser.parse_args()
 
-    os.system("pkill -f llama-server >/dev/null 2>&1")
+    # Kill any existing server on 8080 before starting
+    subprocess.run(["pkill", "-9", "-f", "llama-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.0)
 
     print("==========================================================================")
