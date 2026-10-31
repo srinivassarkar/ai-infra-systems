@@ -1,4 +1,3 @@
-# LLM Inference Worker Deployment requesting 1 GPU unit
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,59 +19,65 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
+      # SRE RULE: Ensure in-flight inference streams finish before container termination
+      terminationGracePeriodSeconds: 60
       nodeSelector:
-        accelerator: nvidia-simulated
-      tolerations:
-        - key: "nvidia.com/gpu"
-          operator: "Exists"
-          effect: "NoSchedule"
+        accelerator: nvidia-l4
       containers:
-        - name: inference-server
-          image: python:3.11-slim
+        - name: inference-engine
+          image: ghcr.io/srinivassarkar/llama-server:latest
           command:
-            - python
+            - /usr/local/bin/llama-server
+            - -m
+            - /opt/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf
+            - -ngl
+            - "99"
+            - --parallel
+            - "8"
             - -c
-            - |
-              import http.server, time
-              # Simulating lightweight worker with metrics and health checks
-              class InferenceHandler(http.server.SimpleHTTPRequestHandler):
-                  def do_GET(self):
-                      if self.path == '/health/live':
-                          self.send_response(200); self.end_headers(); self.wfile.write(b"OK")
-                      elif self.path == '/health/ready':
-                          self.send_response(200); self.end_headers(); self.wfile.write(b"READY")
-                      elif self.path == '/metrics':
-                          self.send_response(200); self.end_headers()
-                          self.wfile.write(b"# HELP http_requests_in_flight Current in-flight requests\n")
-                          self.wfile.write(b"# TYPE http_requests_in_flight gauge\n")
-                          self.wfile.write(b"http_requests_in_flight 0\n")
-                      else:
-                          self.send_response(200); self.end_headers(); self.wfile.write(b"Generated tokens")
-              server = http.server.HTTPServer(('0.0.0.0', 8000), InferenceHandler)
-              server.serve_forever()
+            - "16384"
+            - -fa
+            - "on"
+            - --metrics
+            - --port
+            - "8000"
+            - --host
+            - "0.0.0.0"
           ports:
             - containerPort: 8000
               name: http
+          # GRACEFUL DRAIN PREVENTS HTTP 502 / DROPPED STREAMS ON SCALE-DOWN
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - "curl -s -X GET http://127.0.0.1:8000/health/drain && sleep 15"
           livenessProbe:
             httpGet:
               path: /health/live
               port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /health/ready
               port: 8000
             initialDelaySeconds: 5
-            periodSeconds: 5
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 2
           resources:
             requests:
-              cpu: "250m"
-              memory: "512Mi"
+              cpu: "2000m"
+              memory: "4Gi"
               nvidia.com/gpu: "1"
             limits:
-              cpu: "1000m"
-              memory: "1Gi"
+              cpu: "4000m"
+              memory: "8Gi"
               nvidia.com/gpu: "1"
 ---
 apiVersion: v1

@@ -1,4 +1,4 @@
-# KEDA ScaledObject: Autoscaling on Prometheus Queue Depth
+# KEDA ScaledObject: Autoscaling on Prometheus LLM Queue Depth & KV Saturation
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -11,13 +11,23 @@ spec:
     name: llm-inference-worker
   minReplicaCount: 1
   maxReplicaCount: 6
-  cooldownPeriod: 30
-  pollingInterval: 5
+  cooldownPeriod: 60
+  pollingInterval: 15
   triggers:
+    # TRIGGER 1: LLM Queue Depth (Deferred Requests)
+    # Scales immediately if any request is forced to wait in queue
     - type: prometheus
       metadata:
         serverAddress: http://prometheus-k8s.monitoring.svc.cluster.local:9090
-        metricName: http_requests_in_flight
-        # Scale when average in-flight requests per replica exceeds 2
-        threshold: "2"
-        query: sum(http_requests_in_flight{app="llm-inference-worker"})
+        metricName: llamacpp_requests_deferred
+        threshold: "1"
+        query: sum(llamacpp:requests_deferred{app="llm-inference-worker"})
+
+    # TRIGGER 2: KV Cache Memory Pool Saturation
+    # Scales out if active KV cache exceeds 85% capacity
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+        metricName: llamacpp_kv_cache_usage_ratio
+        threshold: "0.85"
+        query: max(llamacpp:kv_cache_usage_ratio{app="llm-inference-worker"})
