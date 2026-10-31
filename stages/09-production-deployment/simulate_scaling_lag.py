@@ -21,7 +21,7 @@ C) KEDA Queue-Depth Autoscaler (llamacpp:requests_deferred > 0)
 
 import time
 import statistics
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
 # Calibrated Hardware Parameters (NVIDIA L4 Fleet from Stages 01-08)
 SLOTS_PER_REPLICA = 8
@@ -44,15 +44,15 @@ TOTAL_SCALING_LAG_S = (
 )
 
 
-def simulate_traffic_surge(scaling_policy: str, duration_s: int = 60) -> Dict[str, Any]:
+def simulate_traffic_surge(scaling_policy: str, duration_s: int = 120) -> Dict[str, Any]:
     """
     Simulates traffic burst:
     - t = 0 to 10s: 6 concurrent users (steady state < 8 slots)
-    - t = 10 to 45s: 24 concurrent users (sharp 4x burst requiring 3 replicas)
-    - t = 45 to 60s: 6 concurrent users (cooldown)
+    - t = 10 to 70s: 24 concurrent users (sharp 4x burst requiring 3 replicas)
+    - t = 70 to 120s: 6 concurrent users (cooldown)
     """
     replicas = 1
-    max_replicas = 4
+    max_replicas = 3
     scale_event_time = None
     scale_completed_time = None
 
@@ -67,7 +67,7 @@ def simulate_traffic_surge(scaling_policy: str, duration_s: int = 60) -> Dict[st
 
     while current_time < duration_s:
         # Determine current concurrency demand
-        if 10.0 <= current_time < 45.0:
+        if 10.0 <= current_time < 70.0:
             active_demand = 24
         else:
             active_demand = 6
@@ -83,7 +83,7 @@ def simulate_traffic_surge(scaling_policy: str, duration_s: int = 60) -> Dict[st
             # High queue depth increases TTFT linearly via Little's Law
             effective_ttft = BASE_TTFT_MS + (queued_requests * REQUEST_DURATION_S * 1000.0 / total_capacity)
         else:
-            queued_requests = max(0, queued_requests - int(total_capacity - active_demand))
+            queued_requests = max(0, queued_requests - int((total_capacity - active_demand) * dt * 10))
             effective_ttft = BASE_TTFT_MS
 
         ttft_history.append(effective_ttft)
@@ -98,10 +98,9 @@ def simulate_traffic_surge(scaling_policy: str, duration_s: int = 60) -> Dict[st
                 scale_completed_time = current_time + TOTAL_SCALING_LAG_S
 
         elif scaling_policy == "gpu_utilization":
-            # GPU utilization stays at 80-90% even under light decode, delays trigger until saturation is prolonged
+            # GPU utilization metric averaging over 30s rolling window
             if active_demand >= total_capacity and scale_event_time is None and replicas < max_replicas:
-                # Extra 15s delay due to threshold averaging
-                scale_event_time = current_time + 10.0
+                scale_event_time = current_time + 20.0
                 scale_completed_time = scale_event_time + TOTAL_SCALING_LAG_S
 
         # Process replica scaling completion
