@@ -14,6 +14,24 @@ Stage 08 establishes an empirical **Serving Optimization Ablation Matrix** on en
 
 ## 2. Empirical Ablation Matrix & Findings
 
+### 2.1 Fleet Node 2: Apple Mac Studio M3 Ultra (256 GB Unified Memory)
+*Hardware: Apple Mac Studio M3 Ultra (28 CPU cores, 80 GPU cores, 256 GB Unified LPDDR5X, ~800 GB/s bandwidth).*  
+*Model: `Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf`.*  
+*Runtime: `llama-server` (Homebrew, Metal accelerated).*
+
+#### Consolidated Empirical Ablation Table (M3 Ultra)
+
+| Optimization Lever | Tested Configuration | Prefill TTFT (ms) | Decode Throughput (tok/s) | Measured Systems Impact |
+| :--- | :--- | :---: | :---: | :--- |
+| **1. FlashAttention** | `-fa off` (Standard Attention)<br>**`-fa on` (Fused Metal Kernel)** | 99.43 ms<br>**93.79 ms** | 104.76 tok/s<br>**138.20 tok/s** | **+31.9% Decode Speedup** (+33.44 tok/s); -5.64 ms prefill latency reduction via tiled attention memory access. |
+| **2. KV Cache Quant** | FP16 Default (`-c 32768`)<br>**`q8_0` Quantized (`-c 32768`)** | **47.88 ms**<br>462.09 ms | **134.82 tok/s**<br>119.75 tok/s | Quantizes 32K KV cache from 28.0 GB to 14.0 GB (50% memory cut); Metal prefill quantization shader adds runtime overhead. |
+| **3. Chunked Prefill** | `-ub 512` (Large Batch)<br>**`-ub 64` (Fine-Grained)** | **74.50 ms**<br>113.51 ms | 137.01 tok/s<br>**137.25 tok/s** | +39.01 ms prefill trade-off to interleave decode steps and eliminate multi-user ITL stutter; decode speed remains 100% invariant (137 tok/s). |
+| **4. Prefix KV Caching** | Turn 1 (Cold Prompt Prefill)<br>**Turn 2 (Cached Prefix Hit)** | 75.87 ms<br>**34.11 ms** | 137.00 tok/s<br>**137.50 tok/s** | **$2.22\times$ TTFT Collapse** (skips redundant attention prefill on shared system instructions; cuts prompt latency by 41.76 ms). |
+
+---
+
+### 2.2 Fleet Node 3: NVIDIA L4 Cloud Pod (24 GB GDDR6)
+
 *Hardware: NVIDIA L4 (24 GB GDDR6, 300 GB/s bandwidth, Ada Lovelace architecture).*  
 *Model: `Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf`.*  
 *Runtime: `llama-server` (b11963, CUDA 13.0, Driver 580.126.20).*
