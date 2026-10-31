@@ -37,6 +37,19 @@ curl -L -o Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
 
 ### Step 2: Get `llama-server` Binary
 
+* **On macOS (Apple Silicon via Homebrew or Release Tarball):**
+  ```bash
+  # Option A: Install via Homebrew
+  brew install llama.cpp
+  # Binary will be at: /opt/homebrew/bin/llama-server
+
+  # Option B: Download pre-built Metal release
+  mkdir -p ~/llama-bin && cd ~/llama-bin
+  curl -L -o llama-metal-macos.tar.gz \
+    "https://github.com/ggml-org/llama.cpp/releases/download/b11901/llama-b11901-bin-macos-arm64.tar.gz"
+  tar -xzf llama-metal-macos.tar.gz
+  ```
+
 * **On Linux with CUDA (e.g., Ubuntu 24.04 with NVIDIA L4):**
   ```bash
   mkdir -p ~/llama-bin && cd ~/llama-bin
@@ -44,27 +57,27 @@ curl -L -o Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
   tar -xzf llama-b11963-bin-ubuntu-cuda-12.8-x64.tar.gz
   ```
 
-* **On macOS (Apple Silicon Metal):**
-  ```bash
-  mkdir -p ~/llama-bin && cd ~/llama-bin
-  curl -L -o llama-metal-macos.tar.gz \
-    "https://github.com/ggml-org/llama.cpp/releases/download/b11901/llama-b11901-bin-macos-arm64.tar.gz"
-  tar -xzf llama-metal-macos.tar.gz
-  ```
-
 ### Step 3: Launch `llama-server` in the Background
 
-Run the server with full GPU layer offloading (`-ngl 99`) and locked 2048 context window (`-c 2048`):
+Run the server with full GPU layer offloading (`-ngl 99`) and locked context window (`-c 2048`):
 
 ```bash
-# On Linux CUDA (adjust paths to your binary and model):
-export LD_LIBRARY_PATH=~/llama-bin/llama-b11963:$LD_LIBRARY_PATH
-nohup ~/llama-bin/llama-b11963/llama-server \
+# On Mac Studio M3 Ultra:
+/opt/homebrew/bin/llama-server \
   -m ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
   -ngl 99 \
   -c 2048 \
   --port 8080 \
-  --host 0.0.0.0 > server.log 2>&1 &
+  --host 0.0.0.0
+
+# On Linux CUDA:
+export LD_LIBRARY_PATH=~/llama-bin/llama-b11963:$LD_LIBRARY_PATH
+~/llama-bin/llama-b11963/llama-server \
+  -m ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
+  -ngl 99 \
+  -c 2048 \
+  --port 8080 \
+  --host 0.0.0.0
 ```
 
 Verify that the server is ready:
@@ -77,20 +90,19 @@ curl http://127.0.0.1:8080/health
 
 Clone the repository and run the profiler:
 ```bash
-git clone https://github.com/srinivassarkar/ai-infra-systems.git
-cd ai-infra-systems/stages/01-baseline-inference
+cd ~/ai-infra-systems/stages/01-baseline-inference
 
-# 1. Local execution (zero network overhead, 0 ms wire):
+# On Apple Mac Studio M3 Ultra (800 GB/s theoretical peak):
 python3 benchmark_baseline.py \
   --endpoint http://127.0.0.1:8080/v1/chat/completions \
   --model Qwen2.5-Coder-1.5B \
   --samples 5 \
   --model-size-gb 0.986 \
-  --peak-bandwidth-gbps 300.0
+  --peak-bandwidth-gbps 800.0
 
-# 2. Remote execution across Tailscale (e.g. from your laptop to the cloud pod):
+# On NVIDIA L4 (300 GB/s theoretical peak):
 python3 benchmark_baseline.py \
-  --endpoint http://<TAILSCALE_IP>:8080/v1/chat/completions \
+  --endpoint http://127.0.0.1:8080/v1/chat/completions \
   --model Qwen2.5-Coder-1.5B \
   --samples 5 \
   --model-size-gb 0.986 \
@@ -99,9 +111,29 @@ python3 benchmark_baseline.py \
 
 ---
 
-## The Core Metrics Explained Simply
+## 5. Measured Physical Fleet Results
 
-Every benchmark run produces a summary table. Here is what each metric physically represents:
+Here are the actual measured results across our physical fleet for single-stream inference:
+
+| Metric | Node 1: GTX 1050 Ti | Node 2: Mac Studio M3 Ultra | Node 3: NVIDIA L4 |
+| :--- | :--- | :--- | :--- |
+| **Silicon Architecture** | Pascal GDDR5 (112 GB/s) | Apple UMA LPDDR5X (800 GB/s) | Ada Lovelace GDDR6 (300 GB/s) |
+| **Warm Time-to-First-Token (TTFT)** | 104.3 ms | **15.1 ms** (Cold: 861.7 ms) | **7.7 ms** (Local 0ms wire) |
+| **Time-Per-Output-Token (TPOT)** | 19.6 ms/token | **7.6 ms/token** | **5.5 ms/token** |
+| **Decode Generation Speed** | 51.0 tokens/sec | **131.0 tokens/sec** | **183.5 tokens/sec** |
+| **Achieved Memory Bandwidth** | 53.7 GB/s | **127.54 GB/s** | **181.26 GB/s** |
+| **Memory Bus Saturation (B = 1)** | 47.9% | **15.9%** (Scales to 32.3% at B=8) | **60.4%** |
+
+### What These Numbers Mean in Simple Terms:
+1. **Cold Start vs Warm Cache:** On the Mac Studio, the very first request took **861.7 ms** because the Metal GPU compiler had to compile shaders and set up the compute graph. Once warm, TTFT dropped immediately to **15.1 ms** (a $57\times$ speedup).
+2. **Decode Generation Speed:** Once the model starts writing words, the M3 Ultra generates **131 tokens every second** (7.6 milliseconds per token). This is over $2.5\times$ faster than the GTX 1050 Ti ($51\ \mathrm{tok/s}$).
+3. **The Bandwidth Saturation Question:** Why did the 800 GB/s Mac Studio show 15.9% bus saturation for a single user? Because a 1.5B model is narrow ($d_{\mathrm{model}} = 1536$). Generating one token at a time does not create enough parallel work to keep all 80 GPU cores busy. In Stage 03, we show that when 8 users query concurrently, achieved bandwidth jumps to **258.34 GB/s**.
+
+For the complete deep-dive engineering analysis, read the [Stage 01 Full Report](REPORT.md).
+
+---
+
+## The Core Metrics Explained Simply
 
 ```text
 1. Time-To-First-Token (TTFT):
