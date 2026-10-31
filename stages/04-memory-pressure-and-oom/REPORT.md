@@ -87,6 +87,22 @@ Beyond 72,000 aggregate active tokens across slots, **memory bandwidth spent rea
 
 ---
 
+### Cross-Fleet VRAM Scaling Matrix (8 Users @ 32,768 Context Scale)
+
+Using `vram_calculator.py`, we modeled full context scaling across our physical hardware nodes:
+* Model Weights: $0.81\ \mathrm{GB}$
+* Dynamic KV Cache ($8 \times 32{,}768$ tokens): $28.00\ \mathrm{GB}$
+* CUDA / Metal Scratch Base: $0.35\ \mathrm{GB}$
+* **Total Memory Demand:** **$29.16\ \mathrm{GB}$ ($29{,}860\ \mathrm{MB}$)**
+
+| Hardware Platform | Physical Memory | Status Under $8 \times 32\mathrm{K}$ Context | Systems Failure / Operational Outcome |
+| :--- | :---: | :---: | :--- |
+| **Node 1: Edge GTX 1050 Ti** | 4.0 GB | **OOM Crash (Failed)** | Total demand ($29.16\ \mathrm{GB}$) exceeds VRAM by $7.3\times$. Driver aborts at allocation. |
+| **Node 3: NVIDIA L4 (Cloud)** | 24.0 GB | **OOM Crash (Failed)** | $29.16\ \mathrm{GB} > 24\ \mathrm{GB}$. Requires capping context to 16K or quantizing to INT8/Q4. |
+| **Node 2: Mac Studio M3 Ultra**| 256.0 GB | **HEALTHY (Pass)** | $29.16\ \mathrm{GB}$ consumes only **11.4%** of unified memory, leaving >226 GB of headroom. |
+
+---
+
 ## 7. PagedAttention & Prefix Caching Simulation
 
 Using `paged_kv_cache_simulator.py`, we verified virtual-memory paging for KV cache blocks (16 tokens per block):

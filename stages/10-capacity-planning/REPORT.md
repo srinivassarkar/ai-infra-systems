@@ -19,9 +19,9 @@ For models $\le 7\mathrm{B}$ parameters operating on modern accelerators (such a
 
 | Hardware Platform | Total Memory (GB) | Memory Bandwidth (GB/s) | Theoretical VRAM Limit ($N_{\mathrm{mem}}$) | Measured SLO Knee ($N_{\mathrm{SLO}}$) | Binding Constraint | Effective Production Capacity |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **NVIDIA L4 (Cloud Spot)** | 24.0 GB | 300 GB/s | 414 slots | **8 slots** | **Latency (SLO Knee)** | **8 slots** |
-| **Mac Studio M3 Ultra (Node 1)** | 256.0 GB | 800 GB/s | 4,656 slots | **32 slots** | **Latency (SLO Knee)** | **32 slots** |
-| **Edge GTX 1050 Ti (Node 2)** | 4.0 GB | 112.0 GB/s | 48 slots | **2 slots** | **Latency (SLO Knee)** | **2 slots** |
+| **Node 3: NVIDIA L4 (Cloud Spot)** | 24.0 GB | 300 GB/s | 414 slots | **8 slots** | **Latency (SLO Knee)** | **8 slots** |
+| **Node 2: Mac Studio M3 Ultra** | 256.0 GB | 800 GB/s | 4,656 slots | **32 slots** | **Latency (SLO Knee)** | **32 slots** |
+| **Node 1: Edge GTX 1050 Ti** | 4.0 GB | 112.0 GB/s | 48 slots | **2 slots** | **Latency (SLO Knee)** | **2 slots** |
 
 ### Key Systems Analysis:
 * On the **NVIDIA L4**, $24\ \mathrm{GB}$ of VRAM can hold $414$ concurrent user KV caches. However, our Stage 03 Little's Law benchmarks proved that beyond $N=8$, TTFT exploded from $43\ \mathrm{ms}$ to **$428.21\ \mathrm{ms}$**, breaching the $250\ \mathrm{ms}$ SLO. Thus, the effective capacity is strictly **8 slots**.
@@ -39,9 +39,9 @@ Because inference clusters rarely operate at 100% constant saturation without qu
 
 | Hardware Platform | All-Inclusive Hourly Cost | 100% Peak Utilization | 50% Daytime Production | 20% Off-Peak Night |
 | :--- | :---: | :---: | :---: | :---: |
-| **NVIDIA L4 (Cloud Spot)** | $\$0.350\ /\ \mathrm{hr}$ | **$\$0.5074$** | **$\$1.0147$** | **$\$2.5368$** |
-| **Mac Studio M3 Ultra (Node 1)** | $\$0.288\ /\ \mathrm{hr}$ | **$\$0.3333$** | **$\$0.6667$** | **$\$1.6667$** |
-| **Edge GTX 1050 Ti (Node 2)** | $\$0.017\ /\ \mathrm{hr}$ | **$\$0.1124$** | **$\$0.2249$** | **$\$0.5622$** |
+| **Node 3: NVIDIA L4 (Cloud Spot)** | $\$0.350\ /\ \mathrm{hr}$ | **$\$0.5074$** | **$\$1.0147$** | **$\$2.5368$** |
+| **Node 2: Mac Studio M3 Ultra** | $\$0.288\ /\ \mathrm{hr}$ | **$\$0.3333$** | **$\$0.6667$** | **$\$1.6667$** |
+| **Node 1: Edge GTX 1050 Ti** | $\$0.017\ /\ \mathrm{hr}$ | **$\$0.1124$** | **$\$0.2249$** | **$\$0.5622$** |
 
 ### Economic Takeaways:
 1. **Self-Hosted Cloud vs Closed APIs:** At 50% daytime production utilization, self-hosting on NVIDIA L4 cloud spot costs **$\$1.01$ per 1M tokens**. This represents a **$60\% - 75\%$ cost savings** over closed proprietary API endpoints (which typically bill $\$2.50 - \$5.00$ per 1M output tokens).

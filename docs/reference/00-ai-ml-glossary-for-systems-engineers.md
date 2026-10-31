@@ -23,7 +23,7 @@
 [ Pre-Training ] ──► [ Fine-Tuning (LoRA/SFT) ] ──► [ Inference / Serving ]
  10,000+ GPUs           Specializing on data             Deploying the frozen
  (OpenAI, Meta)         (Data Science / ML)               weights in production
-   ❌ NOT YOU               ❌ NOT YOU                     ✅ YOUR ARENA (100%)
+      [OFF-LIMITS]             [OFF-LIMITS]                   [YOUR ARENA (100%)]
 ```
 
 * **Pre-Training:** Training a foundation model from scratch. Requires massive clusters, high-speed InfiniBand networking, and months of compute. Handled by a handful of research frontier labs.
