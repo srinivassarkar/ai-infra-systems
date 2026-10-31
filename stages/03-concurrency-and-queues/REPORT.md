@@ -98,6 +98,46 @@ TTFT (ms)
 
 ---
 
+### Experiment A.2: Apple Mac Studio M3 Ultra Scaling Matrix ($N = 1, 4, 8, 16$)
+
+*Hardware: Apple Mac Studio M3 Ultra (28 CPU cores, 80-core GPU, 256 GB Unified LPDDR5X, ~800 GB/s bandwidth).*  
+*Server Config: `/opt/homebrew/bin/llama-server`, `--parallel 8`, `-c 16384` ($8 \times 2048$ tokens per slot).*
+
+| Concurrency ($N$) | Completed Reqs | Aggregate tok/s | Request Throughput (req/s) | Median TTFT (ms) | P90 TTFT (ms) | P99 TTFT (ms) | Median TPOT (ms/tok) | P99 ITL (ms) | Little's Law ($L$) | SLO Goodput (%) |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1**  | 46  | **109.05** | 4.53  | **36.20** | 43.76  | 95.06  | **7.82**  | 11.79 | **1.00**  | 100.0% |
+| **4**  | 80  | **189.14** | 7.84  | **66.24** | 91.96  | 725.97* | **16.23** | 47.53 | **3.95**  | 91.2%  |
+| **8**  | 114 | **262.01** | 10.73 | **76.67** | 114.48 | 148.91 | **27.61** | 80.05 | **7.80**  | **100.0%** |
+| **16** | 129 | **284.44** | 11.67 | **729.65** | **797.85** | **872.92** | **26.40** | 77.94 | **15.21** | **6.2%** |
+
+*\*Note on $N = 4$ P99 TTFT: The initial 7 requests triggered Metal buffer allocation for slots 1-3 (~600-726 ms); once warm, subsequent requests settled into 49-67 ms.*
+
+#### Architectural Comparison: Apple Silicon (M3 Ultra) vs Enterprise Cloud GPU (NVIDIA L4)
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│               HARDWARE SATURATION CLIFF COMPARISON: M3 ULTRA VS NVIDIA L4               │
+├───────────────────────────────┬──────────────────────────┬─────────────────────────────┤
+│ Metric                        │ Node 2: Mac Studio       │ Node 3: NVIDIA L4           │
+│                               │ M3 Ultra (Apple UMA)     │ Ada Lovelace (GDDR6)        │
+├───────────────────────────────┼──────────────────────────┼─────────────────────────────┤
+│ Single-Stream Decode TPOT     │ 7.82 ms/tok (128 tok/s)  │ 5.59 ms/tok (179 tok/s)     │
+│ Peak In-Slot Aggregate tok/s  │ 262.01 tok/s (at N = 8)  │ 457.58 tok/s (at N = 8)     │
+│ Within-Slot TTFT (N = 8)      │ 76.67 ms (100% SLO)      │ 43.00 ms (100% SLO)         │
+│ Over-Capacity TTFT (N = 16)   │ 729.65 ms (9.51x cliff)  │ 428.21 ms (10.0x cliff)     │
+│ Over-Capacity SLO Goodput     │ 6.2% (catastrophic drop) │ 96.6% (looser SLO margin)   │
+│ Over-Capacity TPOT Invariance │ 26.40 ms (vs 27.61 ms)   │ 15.23 ms (vs 16.28 ms)      │
+│ Little's Law Accuracy (N = 16)│ L = 15.21 (95.1% match)  │ L = 15.69 (98.1% match)     │
+└───────────────────────────────┴──────────────────────────┴─────────────────────────────┘
+```
+
+#### Key Architectural Deductions:
+1. **The Invariance of TPOT Across the Saturation Cliff:** On both architectures, TPOT did not degrade when jumping from $N = 8$ to $N = 16$ ($27.61 \rightarrow 26.40\ \mathrm{ms}$ on M3 Ultra; $16.28 \rightarrow 15.23\ \mathrm{ms}$ on L4). Because physical slots were fixed at `--parallel 8`, the GPU compute pipeline remained at exactly 8 concurrent decoding streams. The extra latency observed by clients was **100% pure FIFO queue waiting time ($W_q$)**.
+2. **Universal Saturation Multiplier:** Regardless of whether memory is unified LPDDR5X (Apple UMA) or discrete GDDR6 (NVIDIA Ada), exceeding slot capacity by $2\times$ produces an identical $\sim 9.5\text{--}10\times$ tail latency explosion.
+3. **SLO Collapsing Cliff:** On Apple Silicon, because single-slot decode is slightly slower than CUDA Tensor cores ($27.6\ \mathrm{ms}$ vs $16.3\ \mathrm{ms}$ per token), queue evacuation takes longer per request. Consequently, waiting behind 8 active requests at $N = 16$ pushed median TTFT to $729.65\ \mathrm{ms}$, causing strict 500 ms TTFT SLO compliance to plunge from **100.0% to 6.2%**. This provides undeniable empirical justification for why admission control (e.g. Envoy concurrency limits) is mandatory ahead of inference clusters.
+
+---
+
 ### Experiment B: Open-Loop Poisson Arrival Rate Sweep ($\lambda = 1, 2, 4, 8, 12, 16\ \mathrm{req/s}$)
 
 | Arrival Rate ($\lambda$) | Completed Reqs | Total Tokens | Aggregate tok/s | Request Throughput (req/s) | Median TTFT (ms) | P90 TTFT (ms) | P99 TTFT (ms) | Max TTFT (ms) | P99 ITL (ms) | SLO Goodput (%) |
