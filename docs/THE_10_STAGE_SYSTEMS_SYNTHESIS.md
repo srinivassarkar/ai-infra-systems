@@ -1,6 +1,8 @@
 # The 10-Stage Systems Synthesis: LLM Inference Reliability Lab
 
-A unified, end-to-end executive digest of the ten progressive engineering stages in `ai-infra-systems`. Every number, latency metric, and memory footprint in this document was directly measured on physical silicon (Edge CUDA, Apple Silicon Unified Memory, and Cloud Enterprise GPUs).
+> **Engineering Integrity & Methodology:**
+> - **Physical Silicon Benchmarks (Stages 01, 02, 03, 05, 06, 07, 08):** Measured directly on bare-metal hardware (Apple Mac Studio M3 Ultra, Cloud Enterprise NVIDIA L4, and Edge GTX 1050 Ti). Every latency and throughput number reflects real execution on physical silicon.
+> - **Discrete-Event Simulation & Capacity Modeling (Stages 04, 09, 10):** Modeled via discrete-event Python simulators and first-principles mathematical engines (Stage 04 PagedAttention simulator, Stage 09 Kubernetes scaling lag simulation, Stage 10 unit economics engine) prior to cluster deployment. No live Kubernetes cluster or KEDA operator was run in this initial suite.
 
 Use this document as your solitary study harness to internalize the mechanical cause-and-effect chain across the entire LLM serving stack.
 

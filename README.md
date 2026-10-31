@@ -2,7 +2,9 @@
 
 How does LLM inference fail, slow down, and recover on real hardware? One cohesive system, ten measured experiments.
 
-> **Status:** Every metric in this repository is derived from direct empirical measurement on physical silicon (Edge CUDA, Apple Silicon UMA, and Cloud Enterprise GPUs). Empty cells indicate non-applicable hardware constraints.
+> **Engineering Integrity & Methodology:**
+> - **Physical Silicon Benchmarks (Stages 01, 02, 03, 05, 06, 07, 08):** Measured directly on physical hardware (Apple Mac Studio M3 Ultra, Cloud Enterprise NVIDIA L4, and Edge GTX 1050 Ti). Every latency and throughput number reflects real execution on physical silicon.
+> - **Discrete-Event Simulation & Capacity Modeling (Stages 04, 09, 10):** Modeled in Python prior to cluster deployment (Stage 04 PagedAttention simulator, Stage 09 Kubernetes scaling lag simulation, Stage 10 unit economics engine). No live Kubernetes cluster or KEDA operator was run in this initial suite; timing chains are discrete-event software simulations.
 >
 > **Executive Digest:** For a single-page cohesive synthesis of all ten stages, physical findings, and SRE production rules, read [The 10-Stage Systems Synthesis](docs/THE_10_STAGE_SYSTEMS_SYNTHESIS.md).
 >
@@ -29,11 +31,11 @@ flowchart TD
 
 ## 2. Physical Hardware Fleet
 
-| Node | Machine | Memory / Bandwidth | Role |
+| Node | Machine | Memory / Bandwidth | Evaluated Stages & Operational Role |
 |---|---|---|---|
-| **1** | Custom Linux Box, NVIDIA GTX 1050 Ti (CUDA 12.8, Driver 570) | 4 GB GDDR5, 112 GB/s (PCIe 3.0) | Constrained edge CUDA, VRAM pressure & OOM triage |
-| **2** | Apple Mac Studio (M3 Ultra, 28 CPU Cores, 80 GPU Cores) | 256 GB Unified LPDDR5X (~800 GB/s) | Large-model serving, continuous batching & UMA memory saturation |
-| **3** | Cloud Enterprise Pod, NVIDIA L4 (Ada Lovelace, Driver 580) | 24 GB GDDR6, 300 GB/s (PCIe 4.0) | Cloud serving baseline, FlashAttention-2 & KEDA autoscaling |
+| **1** | Custom Linux Box, NVIDIA GTX 1050 Ti (CUDA 12.8, Driver 570) | 4 GB GDDR5, 112 GB/s (PCIe 3.0) | Stage 01 baseline single-stream edge profiling & VRAM boundary analysis |
+| **2** | Apple Mac Studio (M3 Ultra, 28 CPU Cores, 80 GPU Cores) | 256 GB Unified LPDDR5X (~800 GB/s) | Stages 01, 02, 03, 05, 06, 07, 08 (Primary bare-metal workstation testbed) |
+| **3** | Cloud Enterprise Pod, NVIDIA L4 (Ada Lovelace, Driver 580) | 24 GB GDDR6, 300 GB/s (PCIe 4.0) | Stages 01, 02, 03, 05, 06, 07, 08 (Cloud enterprise CUDA baseline) |
 | **4** | Apple Mac mini (Intel Core i5 6-Core) | 16 GB DDR4 | Dedicated client traffic injection (k6 / Locust) |
 
 No employer data, proprietary hostnames, or credentials appear in this repository.
@@ -68,35 +70,35 @@ No employer data, proprietary hostnames, or credentials appear in this repositor
 
 ## 4. The 10 Progressive Engineering Stages
 
-| # | Question | Key Deliverable | Target Silicon |
-|---|---|---|---|
-| **01** | How do TTFT and TPOT differ between prefill and decode? | Benchmark harness + mathematical timing models | GTX 1050 Ti, M3 Ultra & NVIDIA L4 |
-| **02** | What happens in memory and disk during model load? | Memory allocation timeline + page cache warm-up | GTX 1050 Ti & M3 Ultra |
-| **03** | How does queue depth inflate P90/P99 latency? | Load test + head-of-line blocking data | M3 Ultra & NVIDIA L4 |
-| **04** | What causes KV-cache blowup and OOM? | VRAM budget formula + memory admission controller | GTX 1050 Ti (4 GB) |
-| **05** | Why does proxy buffering break Server-Sent Events (SSE)? | Tuned Nginx proxy configs + backpressure test | Linux Box / macOS |
-| **06** | How does the stack survive crashes and worker stalls? | Dual health probes (`/health/live` vs `/health/ready`) + auto-recovery | Linux / macOS |
-| **07** | Where does token latency show up in a distributed trace? | Prometheus alerts + OpenTelemetry spans | M3 Ultra & NVIDIA L4 |
-| **08** | How do continuous batching and quantization change throughput? | Batching and quantization benchmarks (FP16 vs AWQ/GGUF) | M3 Ultra & NVIDIA L4 |
-| **09** | How do we scale GPU workloads on Kubernetes without cloud waste? | kind/k3s + Simulated GPU Device Plugin + KEDA queue-depth autoscaler | Local Cluster (kind/k3s) |
-| **10** | How many concurrent users does a hardware config support? | Sizing calculator + empirical unit economics framework | Workstation & Cloud Sizing Calculator |
+| # | Stage Focus | Execution Methodology | Key Deliverable | Target System |
+|---|---|---|---|---|
+| **01** | Prefill vs Decode Physics | **Physical Silicon Benchmark** | Benchmark harness + Roofline model validation | GTX 1050 Ti, M3 Ultra, NVIDIA L4 |
+| **02** | Cold-Start & Virtual Paging | **Physical Silicon Benchmark** | Memory allocation timeline (`--load-mode none` vs `mmap`) | M3 Ultra & NVIDIA L4 |
+| **03** | Concurrency & Slot Saturation | **Physical Silicon Benchmark** | Closed-loop load test, Little's Law validation & HoL profiler | M3 Ultra & NVIDIA L4 |
+| **04** | KV Cache Bloat & Memory Ceilings | **Software Simulation & Formula** | PagedAttention block table simulator + VRAM budget formula | Python Simulator (vLLM Model) |
+| **05** | Edge Streaming Reverse Proxy | **Physical Silicon Benchmark** | Unbuffered SSE load test + tuned Nginx proxy configs | M3 Ultra & NVIDIA L4 |
+| **06** | Chaos Injection & Daemon Recovery | **Physical Silicon Benchmark** | Fault injection harness (`SIGKILL`, `SIGSTOP`) + MTTR audit | M3 Ultra & NVIDIA L4 |
+| **07** | Observability, Metrics & Telemetry | **Physical Silicon Benchmark** | Telemetry gateway + Prometheus histograms + OTel spans | M3 Ultra & NVIDIA L4 |
+| **08** | Serving Engine Ablation Matrix | **Physical Silicon Benchmark** | Runtime ablation suite (FlashAttention, `-ub 64`, Prefix Cache) | M3 Ultra & NVIDIA L4 |
+| **09** | Kubernetes Autoscaling & Scaling Lag | **Discrete-Event Simulation** | Scaling lag simulator (`simulate_scaling_lag.py`) + K8s manifests | Python Simulator (Lag Model) |
+| **10** | Capacity Planning & Token Economics | **Mathematical Economics Engine** | Hardware sizing engine + 24h diurnal cost calculator | Python Economics Engine |
 
 ---
 
 ## 5. Measured Results
 
-| Stage | Headline Result | Verified Write-Up |
-|---|---|---|
-| **01** | **Prefill vs Decode Bound:** Decode is 100% memory-bandwidth bound ($I \approx 4.0\ \text{FLOP/byte}$). Single-stream decode: M3 Ultra **131.0 tok/s** ($7.63\ \text{ms/tok}$, $127.5\ \text{GB/s}$ bus), L4 **191.6 tok/s**, GTX 1050 Ti **51.0 tok/s**. | [Stage 01 Report](stages/01-baseline-inference/REPORT.md) |
-| **02** | **Cold-Start Paging:** Measured eager heap allocation beating virtual memory mmap on M3 Ultra: eager loading delivered first useful token **850.35 ms faster** ($2,264.04\ \text{ms}$ vs $3,114.39\ \text{ms}$) by eliminating first-request page-table translation faults. | [Stage 02 Report](stages/02-cold-start-behavior/REPORT.md) |
-| **03** | **Slot Saturation Cliff:** Exceeding server slots ($N = 16$ vs 8 slots) triggers $9.51\times$ TTFT explosion ($76.7 \rightarrow 729.7\ \text{ms}$ on M3 Ultra; $43 \rightarrow 428\ \text{ms}$ on L4) while TPOT remains invariant ($26.4\ \text{ms/tok}$). | [Stage 03 Report](stages/03-concurrency-and-queues/REPORT.md) |
-| **04** | **KV-Cache Budgeting:** Derived GQA formulas ($H_{\mathrm{kv}} = \frac{H_q}{G}$). Proved 4 GB VRAM ceiling restricts GTX 1050 Ti to 12 slots at 4K context; modeled continuous paging saving $2.3\times$ fragmentation. | [Stage 04 Report](stages/04-memory-pressure-and-oom/REPORT.md) |
-| **05** | **Streaming Edge Proxy:** Verified unbuffered SSE delivery at 4 concurrent streams ($312.64\ \text{tok/s}$ aggregate): median ITL **12.88 ms**, P99 tail jitter **16.86 ms**, Max burst stutter **21.46 ms** (zero buffer bloat). | [Stage 05 Report](stages/05-streaming-and-edge-proxy/REPORT.md) |
-| **06** | **Chaos Engineering & MTTR:** Empirical MTTR of **2,674.33 ms** (P50: 2,661.99 ms) under hard SIGKILL. Empirically confirmed Gray Failure Paradox: `SIGSTOP` frozen thread keeps L4 TCP port open while L7 fails. | [Stage 06 Report](stages/06-failure-injection/REPORT.md) |
-| **07** | **Observability & Telemetry:** Verified native `llama-server` observability gap (missing TTFT/TPOT histograms). Telemetry gateway captured 4 streams (median TTFT **111.40 ms**, TPOT **13.92 ms/tok**) with zero per-token span explosion. | [Stage 07 Report](stages/07-observability-telemetry/REPORT.md) |
-| **08** | **Serving Optimization Ablation:** FlashAttention unlocked **+31.9% decode throughput** on M3 Ultra ($104.8 \rightarrow 138.2\ \text{tok/s}$); chunked prefill (`-ub 64`) stabilized decode fluidity at invariant $137.3\ \text{tok/s}$; prefix caching collapsed TTFT by **$2.22\times$** (M3) and **$3.86\times$** (L4). | [Stage 08 Report](stages/08-serving-optimizations/REPORT.md) |
-| **09** | **Production Autoscaling:** Decomposed $51.73\ \text{s}$ pod scaling lag chain on Kubernetes; proved reactive HPA fails to protect TTFT SLOs without buffer headroom; engineered KEDA queue-depth triggers. | [Stage 09 Report](stages/09-production-deployment/REPORT.md) |
-| **10** | **Dual-Constraint Capacity Planning:** Latency knee binds at 32 concurrent slots on M3 Ultra vs 4,656 VRAM slots ($\min(N_{\mathrm{mem}}, N_{\mathrm{SLO}})$). Unit economics: $\$0.33 / 1\text{M}$ tokens at $100\%$ load; $33.3\%$ KEDA savings. | [Stage 10 Report](stages/10-capacity-planning/REPORT.md) |
+| Stage | Execution Type | Headline Result | Verified Write-Up |
+|---|---|---|---|
+| **01** | `[Physical Silicon]` | **Prefill vs Decode Bound:** Decode is 100% memory-bandwidth bound ($I \approx 4.0\ \text{FLOP/byte}$). Single-stream decode: M3 Ultra **131.0 tok/s** ($7.63\ \text{ms/tok}$, $127.5\ \text{GB/s}$ bus), L4 **191.6 tok/s**, GTX 1050 Ti **51.0 tok/s**. | [Stage 01 Report](stages/01-baseline-inference/REPORT.md) |
+| **02** | `[Physical Silicon]` | **Cold-Start Paging:** Measured eager heap allocation beating virtual memory mmap on M3 Ultra: eager loading delivered first useful token **850.35 ms faster** ($2,264.04\ \text{ms}$ vs $3,114.39\ \text{ms}$) by eliminating first-request page-table translation faults. | [Stage 02 Report](stages/02-cold-start-behavior/REPORT.md) |
+| **03** | `[Physical Silicon]` | **Slot Saturation Cliff:** Exceeding server slots ($N = 16$ vs 8 slots) triggers $9.51\times$ TTFT explosion ($76.7 \rightarrow 729.7\ \text{ms}$ on M3 Ultra; $43 \rightarrow 428\ \text{ms}$ on L4) while TPOT remains invariant ($26.4\ \text{ms/tok}$). | [Stage 03 Report](stages/03-concurrency-and-queues/REPORT.md) |
+| **04** | `[Software Simulation & Formula]` | **KV-Cache Budgeting:** Derived GQA formulas ($H_{\mathrm{kv}} = \frac{H_q}{G}$). Calculated 4 GB VRAM ceiling restricting GTX 1050 Ti to 12 slots at 4K context; modeled PagedAttention block allocation eliminating external memory fragmentation. | [Stage 04 Report](stages/04-memory-pressure-and-oom/REPORT.md) |
+| **05** | `[Physical Silicon]` | **Streaming Edge Proxy:** Verified unbuffered SSE delivery at 4 concurrent streams ($312.64\ \text{tok/s}$ aggregate): median ITL **12.88 ms**, P99 tail jitter **16.86 ms**, Max burst stutter **21.46 ms** (zero buffer bloat). | [Stage 05 Report](stages/05-streaming-and-edge-proxy/REPORT.md) |
+| **06** | `[Physical Silicon]` | **Chaos Engineering & MTTR:** Empirical MTTR of **2,674.33 ms** (P50: 2,661.99 ms) under hard SIGKILL. Empirically confirmed Gray Failure Paradox: `SIGSTOP` frozen thread keeps L4 TCP port open while L7 fails. | [Stage 06 Report](stages/06-failure-injection/REPORT.md) |
+| **07** | `[Physical Silicon]` | **Observability & Telemetry:** Verified native `llama-server` observability gap (missing TTFT/TPOT histograms). Telemetry gateway captured 4 streams (median TTFT **111.40 ms**, TPOT **13.92 ms/tok**) with zero per-token span explosion. | [Stage 07 Report](stages/07-observability-telemetry/REPORT.md) |
+| **08** | `[Physical Silicon]` | **Serving Optimization Ablation:** FlashAttention unlocked **+31.9% decode throughput** on M3 Ultra ($104.8 \rightarrow 138.2\ \text{tok/s}$); chunked prefill (`-ub 64`) stabilized decode fluidity at invariant $137.3\ \text{tok/s}$; prefix caching collapsed TTFT by **$2.22\times$** (M3) and **$3.86\times$** (L4). | [Stage 08 Report](stages/08-serving-optimizations/REPORT.md) |
+| **09** | `[Discrete-Event Simulation]` | **Production Autoscaling Lag:** Simulated $51.73\ \text{s}$ pod scaling lag chain on Kubernetes; modeled why reactive HPA fails to protect TTFT SLOs without buffer headroom; simulated KEDA queue-depth triggers. | [Stage 09 Report](stages/09-production-deployment/REPORT.md) |
+| **10** | `[Capacity Economics Engine]` | **Dual-Constraint Capacity Planning:** Modeled latency knee binding at 32 concurrent slots on M3 Ultra vs 4,656 VRAM slots ($\min(N_{\mathrm{mem}}, N_{\mathrm{SLO}})$). Unit economics: $\$0.33 / 1\text{M}$ tokens at $100\%$ load; $33.3\%$ KEDA savings. | [Stage 10 Report](stages/10-capacity-planning/REPORT.md) |
 
 ---
 
@@ -139,8 +141,8 @@ ai-infra-systems/
 ## 7. Scope and Limits
 
 * **Small Quantized Models on Edge:** Because of the 4 GB GPU on Node 1, local experiments evaluate constrained parameter scales (0.5B to 3B parameters). Results describe this physical hardware honestly, not hypothetical cluster scale.
-* **Bare-Metal Apple Silicon Isolation:** Macs run outside Kubernetes because container runtimes cannot utilize Apple Metal Performance Shaders (MPS). The Kubernetes stages run on Linux.
-* **Autoscaling Demonstration via k3s:** A single physical GPU cannot scale out. KEDA queue-depth autoscaling is demonstrated using multiple containerized CPU/accelerator worker replicas on local `k3s`.
+* **Bare-Metal Apple Silicon Isolation:** Mac Studio M3 Ultra executes as a bare-metal inference workstation because container runtimes cannot access Apple Metal Performance Shaders (MPS) directly.
+* **Kubernetes Scaling Lag Simulation:** In Stage 09, the 51.73-second scaling lag chain and KEDA queue-depth dynamics are evaluated via a calibrated discrete-event simulation (`simulate_scaling_lag.py`) using empirical metrics from Stages 01–08, paired with production declarative manifests (`01-namespace.yaml` through `04-service-ingress.yaml`) ready for physical cluster deployment.
 * **Empirical Integrity:** Only measured numbers are published. Hypothetical cost savings are never claimed.
 
 ---

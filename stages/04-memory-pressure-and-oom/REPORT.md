@@ -1,5 +1,7 @@
 # Stage 04: Memory Pressure, KV Cache Bloat & OOM Prevention Report
 
+> **Methodology Notice:** This report presents memory scaling derived from first-principles attention formulas (`vram_calculator.py`), empirical VRAM measurements on NVIDIA L4, and a software simulation of PagedAttention virtual block tables (`paged_kv_cache_simulator.py`).
+
 ## 1. Executive Summary & The Core Architectural Law
 
 In Stage 01 through Stage 03, we profiled latency, cold starts, and concurrency queuing. Stage 04 addresses the physical memory boundary of LLM serving: **KV Cache Memory Pressure, Host RAM OOM kills, and GPU VRAM exhaustion**.

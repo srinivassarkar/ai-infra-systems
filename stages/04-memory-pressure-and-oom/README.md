@@ -1,5 +1,7 @@
 # Stage 04: Memory Pressure, KV Cache Bloat & OOM Prevention
 
+> **Methodology Notice:** This stage combines first-principles mathematical derivations (`vram_calculator.py`) with a software block-table simulator (`paged_kv_cache_simulator.py`) to model vLLM-style PagedAttention and memory admission control. Empirical VRAM context scaling was verified live on NVIDIA L4 via `nvidia-smi`.
+
 ## 1. Objective
 Mathematically model and experimentally verify memory consumption under deep context sequences (1K up to 128K tokens) and design production admission control mechanisms to eliminate both GPU VRAM memory exhaustion and Host RAM kernel OOM crashes.
 

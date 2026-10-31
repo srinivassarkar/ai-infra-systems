@@ -1,5 +1,7 @@
 # Stage 09: Kubernetes Orchestration, KEDA Autoscaling & Scaling Lag Report
 
+> **Methodology Notice:** This report presents findings from a calibrated discrete-event simulation (`simulate_scaling_lag.py`) of the 7-step Kubernetes and KEDA autoscaling lag chain, parameterized with physical engine metrics from Stages 01–08, to evaluate scaling policies prior to physical cluster orchestration.
+
 ## 1. Executive Summary & The Autoscaling Lag Dilemma
 
 Scaling stateless web services on Kubernetes is straightforward: the Horizontal Pod Autoscaler (HPA) monitors CPU or memory utilization and scales replica counts. In production LLM inference platforms, this classical model breaks down completely due to three fundamental systems constraints:

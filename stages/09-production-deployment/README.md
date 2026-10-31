@@ -1,5 +1,7 @@
 # Stage 09: Kubernetes Orchestration, KEDA Autoscaling & Scaling Lag Analysis
 
+> **Methodology Notice:** This stage evaluates the 7-step Kubernetes scaling lag chain via a calibrated discrete-event simulation (`simulate_scaling_lag.py`) to model controller sync loops, image runtime init, and container startup times before physical cluster deployment. The included Kubernetes manifests (`01-namespace.yaml` through `04-service-ingress.yaml`) are verified declarative blueprints designed for production clusters.
+
 ## 1. Executive Summary & The Autoscaling Lag Dilemma
 
 Scaling stateless microservices on Kubernetes is typically driven by CPU/Memory utilization via the standard Horizontal Pod Autoscaler (HPA). In LLM inference clusters, **CPU/GPU utilization metrics fail as autoscaling indicators**:

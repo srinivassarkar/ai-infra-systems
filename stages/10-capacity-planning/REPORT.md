@@ -1,5 +1,7 @@
 # Stage 10: Capacity Planning, Token Economics & Hardware Sizing Report
 
+> **Methodology Notice:** This report presents sizing bounds and unit economics modeled via `capacity_economics_engine.py` and a 24-hour diurnal traffic simulation, parameterized with verified physical hardware latencies from Stages 01–08.
+
 ## 1. Executive Summary & The Dual-Constraint Capacity Axiom
 
 Capacity planning in enterprise LLM serving is frequently miscalculated by dividing available GPU VRAM by token KV cache sizes. This naive memory calculation assumes that if tokens physically fit into memory, the hardware can serve them within SLA boundaries.

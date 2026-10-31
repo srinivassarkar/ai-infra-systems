@@ -1,5 +1,7 @@
 # Stage 10: Capacity Planning, Token Economics & Hardware Sizing
 
+> **Methodology Notice:** This stage evaluates hardware concurrency bounds and token unit economics using a mathematical capacity planning engine (`capacity_economics_engine.py`) and a 24-hour diurnal traffic trace simulation, parameterized with empirical latency measurements from Stages 01–08.
+
 ## 1. Executive Summary & Objective
 
 The ultimate mandate of a Platform / AI Infrastructure Engineer is translating hardware physics into predictable capacity boundaries and defensible cost economics.
