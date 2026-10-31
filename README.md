@@ -4,6 +4,8 @@ How does LLM inference fail, slow down, and recover on real hardware? One cohesi
 
 > **Status:** Every metric in this repository is derived from direct empirical measurement on physical silicon (Edge CUDA, Apple Silicon UMA, and Cloud Enterprise GPUs). Empty cells indicate non-applicable hardware constraints.
 >
+> **Executive Digest:** For a single-page cohesive synthesis of all ten stages, physical findings, and SRE production rules, read [The 10-Stage Systems Synthesis](docs/THE_10_STAGE_SYSTEMS_SYNTHESIS.md).
+>
 > **Interactive Systems Visualizer:**
 > Walk through the mechanical cause-and-effect chain from GPU matrix math to vLLM continuous batching in our live [Interactive Inference Simulator](https://srinivassarkar.github.io/ai-infra-systems/). Source code available in [`docs/interactive/`](docs/interactive/).
 
