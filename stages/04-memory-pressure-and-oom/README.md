@@ -1,125 +1,81 @@
 # Stage 04: Memory Pressure, KV Cache Bloat & OOM Prevention
 
 ## 1. Objective
-Mathematically model and experimentally verify memory consumption under deep context sequences (1K up to 128K tokens) and design production admission control mechanisms to eliminate CUDA Out-of-Memory (OOM) fatal process crashes.
+Mathematically model and experimentally verify memory consumption under deep context sequences (1K up to 128K tokens) and design production admission control mechanisms to eliminate both GPU VRAM memory exhaustion and Host RAM kernel OOM crashes.
 
 ---
 
-## 2. The Fundamental Law of KV Cache
+## 2. Host RAM OOM (Exit Code 137) vs. GPU VRAM Out-of-Memory
 
-In autoregressive language models, generating token $N+1$ requires attention over all preceding $N$ tokens. 
+A common point of confusion in AI infrastructure is conflating Host RAM exhaustion with GPU VRAM exhaustion:
 
-- **Naive Generation (No Cache):** The model recomputes $Q, K, V$ for the entire sequence at every step. Compute complexity scales quadratically ($O(N^2)$). Generating 500 tokens on top of a 100-token prompt requires 500 trillion FLOPs.
-- **Cached Generation (KV Cache):** Key ($K$) and Value ($V$) tensors are computed once and stored in GPU memory (HBM/SRAM). New decode iterations only compute $Q, K, V$ for the single newest token.
-- **The Core Trade-off:** The KV cache eliminates trillions of FLOPs, but **trades a compute problem for a memory-bandwidth and capacity problem**. Decode is pushed into the memory-bandwidth-bound regime ($AI \approx 1$ FLOP/byte).
-
-```
-[ Input Tokens ] ──▶ Compute K, V ──▶ Stored in KV Cache RAM (Grows linearly O(N))
-                           ▲
-[ Newest Token ] ──▶ Compute Q only ──▶ Attention against full KV Cache ──▶ Sample
-```
+| Failure Type | Trigger Mechanism | Process Behavior | Error / Exit Code |
+| :--- | :--- | :--- | :--- |
+| **Host System OOM** | Host physical RAM or cgroups container memory limit exceeded. | Linux kernel `oom-killer` sends an uncatchable `SIGKILL` (signal 9) to the process. | **Exit Code 137** ($128 + 9$). Container terminated. |
+| **GPU VRAM OOM** | GPU GDDR6 / HBM capacity exceeded during tensor allocation or context pre-allocation. | CUDA runtime returns `cudaErrorMemoryAllocation` inside process memory. | **In-process crash / abort** (e.g. `ggml_cuda_init: failed to allocate buffer`). |
 
 ---
 
-## 3. Mathematical Formulation of KV Cache Memory
+## 3. Allocation Paradigms: `llama.cpp` vs. `vLLM`
 
-### The General Formula
-For standard Multi-Head Attention (MHA) and Grouped-Query Attention (GQA):
+Production inference engines handle KV cache memory using fundamentally different paradigms:
+
+1. **Static Pre-Allocation (`llama.cpp` / `llama-server`):**
+   * Allocates the full context buffer upfront at process startup based on `-c` and `--parallel`.
+   * **Failure Mode:** It *cannot* trigger a dynamic runtime VRAM OOM mid-request. If `-c` is too large for physical VRAM, it fails immediately at boot. If an incoming sequence exceeds `-c`, the server rejects or truncates the sequence.
+2. **Dynamic Paged Allocation (`vLLM` / `SGLang`):**
+   * Allocates memory dynamically in non-contiguous 16-token physical blocks (PagedAttention).
+   * **Failure Mode:** Subject to dynamic runtime VRAM exhaustion. When GPU physical blocks are exhausted, the server must either shed requests, preempt active streams (swapping KV blocks to CPU RAM), or abort.
+
+*Note: The Admission Controller and PagedAttention simulator in this stage model **vLLM-style dynamic systems**, establishing token reservation budgets before requests enter the execution queue.*
+
+---
+
+## 4. First-Principles KV Cache Memory Formulation
+
+### The Mathematical Formula
+For Multi-Head Attention (MHA) and Grouped-Query Attention (GQA):
 
 $$\text{KV Cache Bytes per Token} = 2 \times \text{layers} \times \text{kv\_heads} \times \text{head\_dim} \times \text{bytes\_per\_element}$$
 
 Where:
-- Factor of $2$ accounts for separate Key ($K$) and Value ($V$) tensors.
-- $\text{bytes\_per\_element} = 2$ for FP16/BF16, $1$ for INT8/FP8.
-- $\text{kv\_heads} = \text{q\_heads}$ for MHA.
-- $\text{kv\_heads} = \frac{\text{q\_heads}}{\text{group\_ratio}}$ for GQA (e.g., Llama 3.1 has 32 Q heads, 8 KV heads $\rightarrow 4\times$ reduction).
-- $\text{kv\_heads} = 1$ for MQA (Multi-Query Attention).
+* Factor of $2$ accounts for separate Key ($K$) and Value ($V$) tensors.
+* $\text{bytes\_per\_element} = 2$ for FP16/BF16 ($\approx 1.0\ \mathrm{FLOP/byte}$ arithmetic intensity), $1$ for INT8/Q8_0, and $0.5$ for FP4/Q4_0.
+* For GQA, $\text{kv\_heads} = \frac{\text{q\_heads}}{\text{group\_ratio}}$ (e.g. Qwen 2.5 7B has 28 Q heads, 4 KV heads $\rightarrow 7\times$ reduction).
 
-### Total Memory Footprint
-For a sequence length $S$ and batch size $B$:
-
-$$\text{Total KV Cache Memory (Bytes)} = \text{Bytes per Token} \times S \times B$$
-
-$$\text{Total KV Cache Memory (GiB)} = \frac{2 \cdot \text{layers} \cdot B \cdot \text{kv\_heads} \cdot \text{head\_dim} \cdot S \cdot \text{bytes\_per\_element}}{1024^3}$$
+$$\text{Total KV Cache Memory (GiB)} = \frac{2 \times \text{layers} \times \text{kv\_heads} \times \text{head\_dim} \times \text{Context Length} \times \text{Concurrency } N \times \text{bytes\_per\_element}}{1024^3}$$
 
 ---
 
-## 4. Attention Architecture Comparison
+## 5. Architectural Attention Comparison (MHA vs. GQA vs. MLA)
 
-| Architecture | Model Example | Layers | KV Heads | Head Dim | Bytes/Token (FP16) | 8K Context (1 User) | 128K Context (1 User) |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **MHA** (Multi-Head) | GPT-3 (175B) | 96 | 96 | 128 | 4,718,592 B (4.50 MB) | 36.0 GB | 576.0 GB *(Impossible)* |
-| **GQA** (Grouped-Query) | Llama 3.1 (8B) | 32 | 8 | 128 | 131,072 B (128 KB) | 1.00 GB | 16.0 GB |
-| **GQA** (Grouped-Query) | Qwen 2.5 (7B) | 28 | 4 | 128 | 57,344 B (56 KB) | 0.44 GB | 7.0 GB |
-| **MLA** (Latent Attention) | DeepSeek-V3 (671B) | 61 | 1 (latent) | 576 | 70,272 B (68.6 KB) | 0.54 GB | 8.58 GB *(93% reduction)* |
+Under deep context ($128\mathrm{K}$ tokens, $N = 1$, FP16 precision):
 
-> [!NOTE] Why DeepSeek-V3 Uses MLA
-> Under standard MHA at 128K context, DeepSeek-V3 would demand **478 GB of VRAM for a single user sequence**. By compressing $K$ and $V$ into a low-dimensional latent space ($d_c = 512, d_r = 64$), DeepSeek cuts single-sequence KV memory to **8.58 GB**, enabling high concurrency.
+| Architecture | Model Archetype | Layers | KV Heads | Head Dim | KV Bytes / Token | 8K Context (1 User) | 128K Context (1 User) |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **MHA** (Multi-Head) | GPT-3 (175B) | 96 | 96 | 128 | 4,718,592 B (4.50 MiB) | 35.16 GiB | **562.50 GiB** *(Physically Impossible)* |
+| **GQA** (Grouped-Query) | Llama 3.1 (8B) | 32 | 8 | 128 | 131,072 B (128 KiB) | 0.98 GiB | **15.63 GiB** |
+| **GQA** (Grouped-Query) | Qwen 2.5 (7B) | 28 | 4 | 128 | 57,344 B (56 KiB) | 0.43 GiB | **6.84 GiB** |
+| **GQA** (Grouped-Query) | Qwen 2.5 Coder (1.5B)| 28 | 2 | 64 | 14,336 B (14 KiB) | 0.11 GiB | **1.71 GiB** |
+| **MLA** (Latent Attention)| DeepSeek-V3 (671B)| 61 | 1 (latent)| 576 | 70,272 B (68.6 KiB) | 0.54 GiB | **8.58 GiB** *(98.2% reduction vs MHA)* |
 
----
-
-## 5. Capacity Equation & The Safe KV Pool
-
-A production GPU node must partition memory into three strict zones:
-
-$$\text{Total Physical Memory} = \text{Model Weights} + \text{Runtime Headroom} + \text{KV Cache Pool}$$
-
-$$\text{Available KV Pool} = \text{VRAM}_{\text{total}} - \text{VRAM}_{\text{weights}} - \text{Headroom}_{\text{CUDA}}$$
-
-Where:
-- $\text{VRAM}_{\text{weights}} \approx \text{Params} \times \text{bytes\_per\_param}$ (e.g. Q4 = $\sim 0.55$ B/param).
-- $\text{Headroom}_{\text{CUDA}}$: CUDA context, activation buffers, NCCL communication buffers, and OS graphics buffers (allocate 1.5 GB to 4.0 GB).
-
-### Maximum Concurrency Formula:
-$$\text{Max Concurrent Users} = \left\lfloor \frac{\text{Available KV Pool}}{\text{Bytes per Token} \times \text{Max Context Length}} \right\rfloor$$
+> [!NOTE] DeepSeek-V3 Multi-Head Latent Attention (MLA)
+> Under plain MHA at 128K context, DeepSeek-V3 (61 layers, 128 heads, 128 head dim) would demand **$488.0\ \mathrm{GiB}$ of VRAM for a single sequence**. By compressing $K$ and $V$ into a shared low-dimensional latent vector ($d_c = 512, d_r = 64$), DeepSeek cuts single-sequence memory to **$8.58\ \mathrm{GiB}$** (a **$98.2\%$ reduction**), making 128K concurrency economically viable.
 
 ---
 
-## 6. The Production Admission Controller
+## 6. The Context Memory Crossover Point
 
-Serving engines that accept requests without checking token budgets crash with **CUDA Out of Memory** (Exit Code 137). 
-
-In enterprise architectures, an **Admission Controller** intercepts requests at the gateway:
-1. Calculates $\text{Worst-Case Token Reservation} = P_{\text{prompt}} + G_{\text{max\_tokens}}$.
-2. Computes required memory: $\text{Req RAM} = \text{Tokens} \times \text{Bytes per Token}$.
-3. If $\text{Available KV Pool} \ge \text{Req RAM}$, the request is **Admitted (200 OK)** and token slots are locked.
-4. If $\text{Available KV Pool} < \text{Req RAM}$, the request is **Shed (429 Rate Limit / 503 Overload)** or queued with backpressure.
+In autoregressive decode, model weights are read once per step.
+* For `Qwen2.5-Coder-1.5B-Q4_K_M`, static weights require reading **$986\ \mathrm{MB}$** per step.
+* At $14,336\ \mathrm{bytes/token}$, when context length reaches:
+  $$C_{\mathrm{crossover}} = \frac{986 \times 1024^2\ \mathrm{bytes}}{14,336\ \mathrm{bytes/token}} \approx \mathbf{72,120\ \mathrm{tokens}}$$
+* Beyond 72,000 tokens (or at 2,048 context across 36 concurrent users), **memory bandwidth spent streaming the KV cache exceeds memory bandwidth spent streaming model weights**. Decode speed degrades non-linearly even when VRAM has not run out.
 
 ---
 
-## 7. Tooling: `kv_cache_admission_controller.py`
+## 7. Tooling & Simulation
 
-This repository includes a production CLI capacity planner and admission controller simulator.
-
-### Run Fleet Capacity Matrix
-```bash
-python kv_cache_admission_controller.py --matrix
-```
-
-### Evaluate Single Request Admission
-```bash
-python kv_cache_admission_controller.py \
-  --hw mac-studio-m3-ultra \
-  --model llama-3.1-70b \
-  --quant q4 \
-  --prompt 8192 \
-  --max-gen 2048
-```
-
----
-
-## 8. PagedAttention & Prefix Caching: `paged_kv_cache_simulator.py`
-
-While mathematical capacity planning protects against worst-case allocation, physical memory fragmentation causes up to 60-80% memory waste in naive serving setups.
-
-### Why PagedAttention Eliminates External Fragmentation:
-1. **Contiguous Allocation (Naive):** Dynamically growing arrays require allocating large contiguous VRAM chunks upfront based on maximum sequence length. When sequences finish at variable lengths, memory holes form that cannot fit new requests (external fragmentation).
-2. **Paged Physical Blocks (PagedAttention):** Sequences are split into fixed-size logical blocks (e.g. 16 tokens). Physical blocks are allocated on-demand from a non-contiguous pool. External memory fragmentation drops to **0%**, and internal fragmentation is strictly bounded to at most `block_size - 1` tokens per request.
-3. **Prefix Caching:** Shared system prompts (e.g., 256–2048 token instruction headers) map to identical cumulative hash digests. Subsequent requests share the exact physical blocks of earlier requests via reference counting (`ref_count > 1`), eliminating redundant prefill computation.
-
-### Run the Standalone Simulation:
-```bash
-python paged_kv_cache_simulator.py
-```
-This runs a visual step-by-step demonstration illustrating prompt admission, prefix cache hits, autoregressive token expansion, and reference-counted garbage collection with zero external memory fragmentation.
-
+1. **Fleet Capacity Planner:** `python3 kv_cache_admission_controller.py --matrix`
+2. **vLLM PagedAttention & Prefix Caching Simulator:** `python3 paged_kv_cache_simulator.py`
+3. **VRAM Footprint Estimator:** `python3 vram_calculator.py --params 1.5 --precision q4_k_m --context 32768`
