@@ -45,7 +45,7 @@ $$\text{Total KV Cache Memory (GiB)} = \frac{2 \times L \times H_{\mathrm{kv}} \
 Where:
 * Factor of $2$ accounts for separate Key ($K$) and Value ($V$) tensors.
 * $L$: number of Transformer layers (`layers`).
-* $H_{\mathrm{kv}}$: number of Key/Value attention heads (`kv_heads`). For GQA, $H_{\mathrm{kv}} = \frac{H_q}{\text{group\_ratio}}$ (e.g. Qwen 2.5 1.5B has 28 layers, 2 KV heads, 64 head dim $\rightarrow \mathbf{14,336\ \mathrm{bytes/token}}$).
+* $H_{\mathrm{kv}}$: number of Key/Value attention heads (`kv_heads`). For GQA, $H_{\mathrm{kv}} = \frac{H_q}{G}$ where $G$ is the group ratio (e.g. Qwen 2.5 1.5B has 28 layers, 2 KV heads, 64 head dim $\rightarrow \mathbf{14,336\ \mathrm{bytes/token}}$).
 * $D_{\mathrm{head}}$: dimension per attention head (`head_dim`).
 * $B_{\mathrm{element}}$: bytes per tensor element ($B_{\mathrm{element}} = 2$ for FP16/BF16, $1$ for INT8/Q8_0, and $0.5$ for FP4/Q4_0).
 * $C$: context sequence length (`Context Length`).
