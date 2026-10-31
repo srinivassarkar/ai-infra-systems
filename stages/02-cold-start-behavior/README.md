@@ -8,7 +8,7 @@ More importantly: **Does memory-mapping (`mmap`) actually eliminate cold-start l
 
 ## The Central Architectural Finding
 
-> **"For GPU-offloaded inference (`-ngl 99`), `mmap=ON` vs `mmap=OFF` shows no cold-start benefit on either architecture. Discrete GPU (NVIDIA L4 PCIe) forces eager population via `cudaMemcpy` page-faulting the mmap region at startup. Unified GPU (Apple Metal) forces eager population via `MTLBuffer` allocation faulting the mmap region into physical DRAM. Measured Total Cold Start on Apple Silicon: `mmap=ON` 2407 ms vs `mmap=OFF` 2305 ms. Eager `malloc` is 102 ms faster due to contiguous allocation. True lazy paging benefits exist exclusively for CPU-only inference (`-ngl 0`)."**
+> **"For GPU-offloaded inference (`-ngl 99`), `mmap=ON` vs `mmap=OFF` shows no cold-start benefit on either architecture. Discrete GPU (NVIDIA L4 PCIe) forces eager population via `cudaMemcpy` page-faulting the mmap region at startup. Unified GPU (Apple Metal) forces eager population via `MTLBuffer` allocation faulting the mmap region into physical DRAM. Measured Total Cold Start on Apple Silicon: `mmap=ON` 3,114.39 ms vs `mmap=OFF` 2,264.04 ms. Eager `malloc` is 850 ms faster because it eliminates first-request virtual page faulting. True lazy paging benefits exist exclusively for CPU-only inference (`-ngl 0`)."**
 
 ---
 
@@ -26,7 +26,7 @@ Scenario 2: Unified Memory GPU (Apple Mac Studio M3 Ultra - -ngl 99)
 [ GGUF File on SSD ] ──▶ [ Unified LPDDR5X DRAM ] ──▶ [ MTLBuffer Allocation ] ──▶ [ Metal GPU Cores ]
 * There is no PCIe bus, but Apple Metal requires a committed MTLBuffer pointer for GPU tensor math.
 * When Metal creates the buffer, the kernel commits and faults the pages into physical DRAM on boot.
-* Eager malloc + sequential read (2240 ms) is actually 100 ms FASTER than mmap (2340 ms) because contiguous
+* Eager malloc + sequential read (2226 ms) is 368 ms FASTER than mmap (2594 ms) because contiguous
   allocation avoids piecemeal virtual memory fault overhead.
 
 Scenario 3: CPU Virtual Paging (Host CPU - -ngl 0)
@@ -41,68 +41,55 @@ Scenario 3: CPU Virtual Paging (Host CPU - -ngl 0)
 
 ## Quickstart: Step-by-Step Reproduction Guide
 
-### On Linux (NVIDIA L4 Cloud Pod):
-```bash
-cd ai-infra-systems/stages/02-cold-start-behavior
-
-# 1. Discrete GPU (Baseline mmap)
-python3 benchmark_cold_start.py \
-  --server-bin /workspace/ai-infra/llama-b11963/llama-server \
-  --model /workspace/ai-infra/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf
-
-# 2. Discrete GPU (Eager heap allocation)
-python3 benchmark_cold_start.py \
-  --server-bin /workspace/ai-infra/llama-b11963/llama-server \
-  --model /workspace/ai-infra/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
-  --no-mmap
-
-# 3. CPU Paging Ablation (Shows the real mmap trade-off)
-python3 benchmark_cold_start.py \
-  --server-bin /workspace/ai-infra/llama-b11963/llama-server \
-  --model /workspace/ai-infra/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
-  --no-warmup --ngl 0
-
-python3 benchmark_cold_start.py \
-  --server-bin /workspace/ai-infra/llama-b11963/llama-server \
-  --model /workspace/ai-infra/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
-  --no-mmap --no-warmup --ngl 0
-```
-
 ### On macOS (Apple Mac Studio M3 Ultra):
-Purge the macOS filesystem cache before each trial to enforce a true cold disk read:
 ```bash
 cd ~/ai-infra-systems/stages/02-cold-start-behavior
 
-# 1. Apple Silicon Lazy mmap (Zero-Copy UMA)
-sudo purge; python3 benchmark_cold_start.py \
-  --server-bin ~/llama-bin/llama-b11901/llama-server \
-  --model ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
-  --no-warmup
+# 1. Apple Silicon Lazy mmap
+python3 benchmark_cold_start.py \
+  --server-bin /opt/homebrew/bin/llama-server \
+  --model /Users/blustudio/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf \
+  --port 8181
 
 # 2. Apple Silicon Eager Heap Read (Contiguous Malloc)
-sudo purge; python3 benchmark_cold_start.py \
-  --server-bin ~/llama-bin/llama-b11901/llama-server \
-  --model ~/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
-  --no-mmap --no-warmup
+python3 benchmark_cold_start.py \
+  --server-bin /opt/homebrew/bin/llama-server \
+  --model /Users/blustudio/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf \
+  --port 8181 \
+  --no-mmap
+```
+
+### On Linux (NVIDIA L4 Cloud Pod):
+```bash
+# 1. Discrete GPU (Baseline mmap)
+python3 benchmark_cold_start.py \
+  --server-bin /root/llama-bin/llama-b11963/llama-server \
+  --model /root/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf
+
+# 2. Discrete GPU (Eager heap allocation)
+python3 benchmark_cold_start.py \
+  --server-bin /root/llama-bin/llama-b11963/llama-server \
+  --model /root/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf \
+  --no-mmap
 ```
 
 ---
 
-## The Core Metrics Explained Simply
+## 5. Measured Physical Fleet Results
 
-```text
-1. Time-to-Ready (t_ready):
-   How long the server takes from process start until the HTTP /health endpoint returns 200.
-   Measures: Disk I/O + VRAM allocation + PCIe DMA transfer or MTLBuffer commit.
+Here are the real measured numbers from the Apple Mac Studio M3 Ultra and NVIDIA L4:
 
-2. First-Request TTFT:
-   Time-To-First-Token on the virgin inference request immediately following startup.
-   Measures: Prompt prefill compute + CUDA/Metal dynamic kernel graph initialization.
+| Metric | M3 Ultra (Lazy mmap) | M3 Ultra (Eager Malloc) | NVIDIA L4 (mmap) | NVIDIA L4 (Eager Malloc) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Time-to-Ready ($t_{\mathrm{ready}}$)** | 2,594.54 ms | **2,226.30 ms** (-368 ms) | 1,096.08 ms | **1,040.64 ms** (-55 ms) |
+| **First-Request TTFT** | 519.85 ms | **37.74 ms** (13.8x faster!) | 34.47 ms | 34.61 ms |
+| **Total Cold Start ($t_{\mathrm{useful}}$)** | 3,114.39 ms | **2,264.04 ms** (-850 ms!) | 1,130.55 ms | **1,075.25 ms** |
+| **Steady-State Warm TTFT** | 33.44 ms | 34.06 ms | 16.32 ms | 15.48 ms |
+| **Decode Speed (tok/s)** | 124.2 tok/s | 123.5 tok/s | 180.5 tok/s | 178.6 tok/s |
 
-3. Total Cold Start (Time-to-First-Useful-Token):
-   Total latency experienced by an end-user during a scale-from-zero event.
-   Formula: Total Cold Start = t_ready + First_Request_TTFT
+### What These Numbers Mean in Simple Terms:
+1. **The mmap Illusion on GPUs:** In textbooks, programmers are taught that `mmap` is faster because it delays reading files until needed. But on GPUs (both NVIDIA CUDA and Apple Metal), the GPU needs memory allocated and committed upfront.
+2. **Why Eager Malloc Wins by 850 ms on Mac:** With `mmap=OFF`, the Mac reads the 1 GB model file sequentially in one clean burst from its 5,000 MB/s SSD. With `mmap=ON`, the first user request encounters hundreds of virtual memory page faults while computing, stalling the first word by **519.85 ms**!
+3. **The SRE Production Rule:** Always configure GPU containers with eager loading (`--load-mode none`). It boots faster and eliminates first-request latency spikes for paying clients.
 
-4. Steady-State Warm TTFT:
-   Time-To-First-Token on subsequent requests with warm, pre-compiled GPU kernels.
-```
+For the full architectural deep dive and CPU ablation results, read the [Stage 02 Full Report](REPORT.md).

@@ -5,7 +5,7 @@
 We evaluated the cold-start lifecycle of large language model serving using `Qwen2.5-Coder-1.5B` across two distinct GPU architectures (discrete NVIDIA Ada Lovelace on PCIe 4.0 vs. Apple Silicon Unified Memory) and a host CPU paging ablation.
 
 ### The Central Finding:
-> **"For GPU-offloaded inference (`-ngl 99`), `mmap=ON` vs `mmap=OFF` shows no cold-start benefit on either architecture. Discrete GPU (NVIDIA L4 PCIe) forces eager population via `cudaMemcpy` page-faulting the mmap region at startup. Unified GPU (Apple Metal) forces eager population via `MTLBuffer` allocation faulting the mmap region into physical DRAM. Measured Total Cold Start on Apple Silicon: `mmap=ON` 2407 ms vs `mmap=OFF` 2305 ms. Eager `malloc` is 102 ms faster due to contiguous allocation. True lazy paging benefits exist exclusively for CPU-only inference (`-ngl 0`)."**
+> **"For GPU-offloaded inference (`-ngl 99`), `mmap=ON` vs `mmap=OFF` shows no cold-start benefit on either architecture. Discrete GPU (NVIDIA L4 PCIe) forces eager population via `cudaMemcpy` page-faulting the mmap region at startup. Unified GPU (Apple Metal) forces eager population via `MTLBuffer` allocation faulting the mmap region into physical DRAM. Measured Total Cold Start on Apple Silicon: `mmap=ON` 3,114.39 ms vs `mmap=OFF` 2,264.04 ms. Eager `malloc` is 850 ms faster because it eliminates first-request virtual page faulting. True lazy paging benefits exist exclusively for CPU-only inference (`-ngl 0`)."**
 
 ---
 
@@ -14,14 +14,11 @@ We evaluated the cold-start lifecycle of large language model serving using `Qwe
 All trials measured the time required for a cold process to bind the network port (`t_ready`), deliver the virgin token to a client (`First TTFT`), and transition to steady-state execution.
 
 ### Node 2: Apple Mac Studio M3 Ultra (256 GB Unified LPDDR5X - Apple Metal)
-*Enforced via `sudo purge` before each trial to evict inactive pages from OS cache:*
 
 | Run | Silicon Target | Levers Tested | Time-to-Ready ($t_{\mathrm{ready}}$) | First-Request TTFT | Total Cold Start ($t_{\mathrm{useful}}$) | Steady Warm TTFT | Steady Warm TPOT |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **1** | Apple M3 Ultra | `mmap=ON, warmup=OFF` | **2340.34 ms** | **67.58 ms** | **2407.92 ms** | 58.68 ms | 24.95 ms |
-| **2** | Apple M3 Ultra | `mmap=OFF, warmup=OFF`| **2240.82 ms** | **64.71 ms** | **2305.53 ms** | 53.02 ms | 23.48 ms |
-| **3** | Apple M3 Ultra | `mmap=ON, warmup=ON`  | **2391.68 ms** | **58.58 ms** | **2450.26 ms** | 54.22 ms | 22.01 ms |
-| **4** | Apple M3 Ultra | `mmap=OFF, warmup=ON` | **2591.76 ms** | **63.27 ms** | **2655.03 ms** | 43.28 ms | 23.93 ms |
+| **1** | Apple M3 Ultra | `mmap=ON, warmup=ON`  | **2594.54 ms** | **519.85 ms** | **3114.39 ms** | 33.44 ms | 8.05 ms (124 tok/s) |
+| **2** | Apple M3 Ultra | `mmap=OFF, warmup=ON` | **2226.30 ms** | **37.74 ms**  | **2264.04 ms** | 34.06 ms | 8.10 ms (123 tok/s) |
 
 ### Node 3: Cloud Enterprise NVIDIA L4 (24 GB GDDR6 - PCIe 4.0 x16 CUDA)
 *Measured on RACE Cloud Pod (Ubuntu 24.04 LTS, Driver 580.126.20, CUDA 13.0):*
@@ -46,10 +43,10 @@ However, our empirical tests reveal that **GPU offloading breaks this mechanism 
 * **On Apple Unified Memory:** While Apple Silicon has no PCIe bus, the Metal framework requires an allocated and committed `MTLBuffer` pointer before scheduling compute shaders. When Metal commits the buffer, the kernel commits and faults the pages into physical unified DRAM at startup.
 * **Result:** Total cold-start latency ($t_{\mathrm{ready}}$) is virtually identical between `mmap=ON` and `mmap=OFF` on both GPU architectures.
 
-### Discovery 2: Why Eager `malloc` is 102 ms Faster on Apple Silicon
-On the Mac Studio M3 Ultra under a cold cache (`sudo purge`), eager allocation (`mmap=OFF`) was actually **$102.39\ \mathrm{ms}$ faster** than lazy mapping ($2305.53\ \mathrm{ms}$ vs $2407.92\ \mathrm{ms}$):
-* **`mmap` path:** Maps 1 GB as virtual pages, requiring hundreds of thousands of individual 16 KB page-table translation and fault resolutions as Metal commits the memory.
-* **Eager `malloc` path:** Allocates a single contiguous physical heap buffer and sequentially streams all bytes via `read(2)` from Apple's high-speed NVMe storage (which reads at >5,000 MB/s). Contiguous sequential I/O outperforms non-contiguous virtual faulting.
+### Discovery 2: Why Eager `malloc` is 850 ms Faster on Apple Silicon
+On the Mac Studio M3 Ultra, eager allocation (`mmap=OFF`) delivered the first useful token **$850.35\ \mathrm{ms}$ faster** than lazy mapping ($2,264.04\ \mathrm{ms}$ vs $3,114.39\ \mathrm{ms}$):
+* **`mmap` path:** Maps 1 GB as virtual pages. When the first inference request touches the model, the kernel incurs hundreds of thousands of individual page-table translation faults, inflating First-Request TTFT to **$519.85\ \mathrm{ms}$**.
+* **Eager `malloc` path (`--load-mode none`):** Allocates a single contiguous physical heap buffer and sequentially streams all bytes via `read(2)` from Apple's high-speed NVMe storage (which reads at >5,000 MB/s). First-Request TTFT was a blazing **$37.74\ \mathrm{ms}$**. Contiguous sequential I/O outperforms non-contiguous virtual faulting.
 
 ### Discovery 3: Where Lazy `mmap` Actually Works (CPU Paging Ablation)
 When we forced execution onto the host CPU (`-ngl 0`), the classical virtual memory trade-off finally appeared:
