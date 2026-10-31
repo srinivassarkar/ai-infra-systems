@@ -17,7 +17,7 @@ How does LLM inference fail, slow down, and recover on real hardware? One cohesi
 
 ```mermaid
 flowchart TD
-    K6["k6 load generator<br/>Node 4 (Intel Mac mini)"] -->|HTTP and SSE| NG["Nginx edge proxy<br/>buffering off"]
+    CL["Load Generator & Async Client<br/>(k6 / Python AsyncIO)"] -->|HTTP and SSE| NG["Nginx edge proxy<br/>buffering off"]
     NG --> GW["Gateway<br/>queue, rate limit, health"]
     GW --> RT["Serving runtime<br/>llama.cpp CUDA or mlx-lm"]
     RT --> N1["Node 1<br/>GTX 1050 Ti 4 GB"]
@@ -36,9 +36,6 @@ flowchart TD
 | **1** | Custom Linux Box, NVIDIA GTX 1050 Ti (CUDA 12.8, Driver 570) | 4 GB GDDR5, 112 GB/s (PCIe 3.0) | Stage 01 baseline single-stream edge profiling & VRAM boundary analysis |
 | **2** | Apple Mac Studio (M3 Ultra, 28 CPU Cores, 80 GPU Cores) | 256 GB Unified LPDDR5X (~800 GB/s) | Stages 01, 02, 03, 05, 06, 07, 08 (Primary bare-metal workstation testbed) |
 | **3** | Cloud Enterprise Pod, NVIDIA L4 (Ada Lovelace, Driver 580) | 24 GB GDDR6, 300 GB/s (PCIe 4.0) | Stages 01, 02, 03, 05, 06, 07, 08 (Cloud enterprise CUDA baseline) |
-| **4** | Apple Mac mini (Intel Core i5 6-Core) | 16 GB DDR4 | Dedicated client traffic injection (k6 / Locust) |
-
-No employer data, proprietary hostnames, or credentials appear in this repository.
 
 ---
 
