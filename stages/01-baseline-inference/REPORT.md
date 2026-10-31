@@ -10,11 +10,11 @@ Here is the complete comparison:
 | :--- | :--- | :--- | :--- | :--- |
 | **Silicon Architecture** | Pascal GDDR5 (PCIe 3.0) | Ada GDDR6 (PCIe 4.0) | Ada GDDR6 (over WAN mesh) | Apple UMA LPDDR5X (Unified) |
 | **Theoretical Peak BW** | 112.0 GB/s | 300.0 GB/s | 300.0 GB/s | 800.0 GB/s |
-| **Time-to-First-Token (TTFT)** | 104.3 ms | **7.7 ms** | **147.5 ms** | 103.4 ms |
-| **Time-Per-Output-Token (TPOT)**| 19.6 ms/tok | **5.5 ms/tok** | **5.1 ms/tok** | **4.6 ms/tok** |
-| **Decode Generation Speed** | 51.0 tok/s | **183.5 tok/s** | **197.2 tok/s** | **217.4 tok/s** |
-| **Achieved Memory Bandwidth** | 53.7 GB/s | **181.26 GB/s** | **192.01 GB/s** | **243.8 GB/s** |
-| **Memory Bus Saturation** | **47.9%** | **60.4%** | **64.0%** | **30.5%** |
+| **Time-to-First-Token (TTFT)** | 104.3 ms | **7.7 ms** | **147.5 ms** | **15.1 ms** (warm) / 861.7 ms (cold) |
+| **Time-Per-Output-Token (TPOT)**| 19.6 ms/tok | **5.5 ms/tok** | **5.1 ms/tok** | **7.6 ms/tok** |
+| **Decode Generation Speed** | 51.0 tok/s | **183.5 tok/s** | **197.2 tok/s** | **131.0 tok/s** (Avg: 129.4 tok/s) |
+| **Achieved Memory Bandwidth** | 53.7 GB/s | **181.26 GB/s** | **192.01 GB/s** | **127.54 GB/s** |
+| **Memory Bus Saturation (B=1)** | **47.9%** | **60.4%** | **64.0%** | **15.9%** (32.2% at B=8) |
 
 ---
 
@@ -57,16 +57,17 @@ Total Client-Perceived TTFT:       147.5 ms
 
 ---
 
-### Discovery 2: The Bandwidth Saturation Paradox (60.4% vs 30.5%)
+### Discovery 2: The Bandwidth Saturation Paradox (60.4% vs 15.9%)
 * The **NVIDIA L4** achieved **60.4% bus saturation** ($181.26\ \mathrm{GB/s}$ of its 300 GB/s bus).
-* The **Mac Studio M3 Ultra** achieved only **30.5% bus saturation** ($243.8\ \mathrm{GB/s}$ of its 800 GB/s bus).
+* The **Mac Studio M3 Ultra** achieved **15.9% bus saturation** ($127.54\ \mathrm{GB/s}$ of its 800 GB/s bus) at single-stream $B = 1$.
 
-**Why did the high-end 800 GB/s Mac Studio saturate only 30.5% of its memory bus?**
+**Why did the high-end 800 GB/s Mac Studio saturate only 15.9% of its memory bus at B = 1?**
 The answer lies in **GPU core occupancy**:
 * `Qwen2.5-Coder-1.5B` is a compact model with a narrow hidden layer dimension ($d_{\mathrm{model}} = 1536$).
 * At single-token generation ($\mathrm{batch\ size} = 1$), a narrow matrix-vector multiplication does not generate enough concurrent thread blocks to keep all 80 GPU cores on the M3 Ultra busy. The execution units spend idle cycles waiting between layer dispatches.
 * In contrast, the NVIDIA L4 has 58 compact Streaming Multiprocessors and a large 48 MB on-chip L2 cache, which keeps the memory pipeline continuously full even on small models.
-* On a large 70B parameter model ($d_{\mathrm{model}} = 8192$), each layer is wide enough to saturate all 80 cores on the Mac, driving bus utilization above 70%.
+* **Continuous Batching Solves Occupancy:** When we scaled concurrency to $B = 8$ in Stage 03, aggregate decode throughput surged to **$262.01\ \text{tok/s}$**, pushing achieved memory bandwidth to **$258.34\ \mathrm{GB/s}$** ($32.3\%$ bus saturation).
+* On a large 70B parameter model ($d_{\mathrm{model}} = 8192$), each layer is wide enough to saturate all 80 cores on the Mac even at $B = 1$, driving bus utilization above 70%.
 
 ---
 
@@ -83,11 +84,11 @@ python3 benchmark_baseline.py \
   --model-size-gb 0.986 \
   --peak-bandwidth-gbps 300.0
 
-# To test Node 3 over your Tailscale network:
+# To test Node 2 locally on Apple Mac Studio M3 Ultra:
 python3 benchmark_baseline.py \
-  --endpoint http://<YOUR_TAILSCALE_IP>:8080/v1/chat/completions \
+  --endpoint http://127.0.0.1:8080/v1/chat/completions \
   --model Qwen2.5-Coder-1.5B \
   --samples 5 \
   --model-size-gb 0.986 \
-  --peak-bandwidth-gbps 300.0
+  --peak-bandwidth-gbps 800.0
 ```
