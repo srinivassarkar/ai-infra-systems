@@ -161,9 +161,11 @@ def main():
     parser.add_argument("--trials", type=int, default=3, help="Number of SIGKILL recovery trials")
     args = parser.parse_args()
 
-    # Clean port 8080 without self-matching pkill -f (matching exact binary or port only)
-    subprocess.run(["pkill", "-9", "-x", "llama-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(["fuser", "-k", "-9", "8080/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Clean port 8080 by matching exact binary executable name only
+    try:
+        subprocess.run(["pkill", "-9", "-x", "llama-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
     time.sleep(1.0)
 
     print("==========================================================================")
