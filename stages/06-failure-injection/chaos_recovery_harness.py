@@ -144,7 +144,7 @@ def test_sigkill_mttr_distribution(server_bin: str, model_path: str, trials: int
         print(f"  Trial {trial}/{trials}: MTTR = {mttr_ms:.2f} ms (Recovered PID {proc_recovered.pid})")
 
         # Clean shutdown for next trial
-        send_proc_signal(proc, signal.SIGKILL)
+        send_proc_signal(proc_recovered, signal.SIGKILL)
         try:
             proc_recovered.wait(timeout=2.0)
         except subprocess.TimeoutExpired:
@@ -161,8 +161,9 @@ def main():
     parser.add_argument("--trials", type=int, default=3, help="Number of SIGKILL recovery trials")
     args = parser.parse_args()
 
-    # Kill any existing server on 8080 before starting
-    subprocess.run(["pkill", "-9", "-f", "llama-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Clean port 8080 without self-matching pkill -f (matching exact binary or port only)
+    subprocess.run(["pkill", "-9", "-x", "llama-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["fuser", "-k", "-9", "8080/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.0)
 
     print("==========================================================================")
