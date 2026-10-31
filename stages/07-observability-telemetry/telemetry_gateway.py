@@ -24,12 +24,15 @@ import sys
 import os
 import subprocess
 import uuid
+import argparse
 from typing import Dict, List, Any
 
 UPSTREAM_URL = "http://127.0.0.1:8080"
-GATEWAY_PORT = 8000
-METRICS_PORT = 9090
-TRACE_LOG_FILE = "telemetry_traces.jsonl"
+DEFAULT_GATEWAY_PORT = 8002  # Using 8002 to avoid collision with Stage 05 Nginx (8000/8001)
+DEFAULT_METRICS_PORT = 9090
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+TRACE_LOG_FILE = os.path.join(SCRIPT_DIR, "telemetry_traces.jsonl")
 
 # Histogram Buckets (in seconds)
 TTFT_BUCKETS = [0.010, 0.025, 0.050, 0.075, 0.100, 0.250, 0.500, 1.000, 2.500, 5.000]
@@ -290,7 +293,7 @@ class GatewayRequestHandler(http.server.BaseHTTPRequestHandler):
             with open(TRACE_LOG_FILE, "a") as f:
                 f.write(json.dumps(trace_record) + "\n")
 
-        except Exception as e:
+        except Exception:
             pass
         finally:
             METRICS.record_request_end()
@@ -382,30 +385,35 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     allow_reuse_address = True
 
 
-def start_gateway_server():
-    server = ThreadedHTTPServer(("0.0.0.0", GATEWAY_PORT), GatewayRequestHandler)
+def start_gateway_server(port: int):
+    server = ThreadedHTTPServer(("0.0.0.0", port), GatewayRequestHandler)
     server.serve_forever()
 
 
-def start_metrics_server():
-    server = ThreadedHTTPServer(("0.0.0.0", METRICS_PORT), PrometheusMetricsHandler)
+def start_metrics_server(port: int):
+    server = ThreadedHTTPServer(("0.0.0.0", port), PrometheusMetricsHandler)
     server.serve_forever()
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Stage 07 LLM Ingress Telemetry Gateway")
+    parser.add_argument("--gateway-port", type=int, default=DEFAULT_GATEWAY_PORT, help="Port for OpenAI proxy")
+    parser.add_argument("--metrics-port", type=int, default=DEFAULT_METRICS_PORT, help="Port for Prometheus exporter")
+    args = parser.parse_args()
+
     print("==========================================================================")
     print(" AI INFRA SYSTEMS - STAGE 07: LLM TELEMETRY & OBSERVABILITY GATEWAY")
     print("==========================================================================")
-    print(f" Ingress Proxy Port:     http://0.0.0.0:{GATEWAY_PORT} -> {UPSTREAM_URL}")
-    print(f" Prometheus Metrics:     http://0.0.0.0:{METRICS_PORT}/metrics")
+    print(f" Ingress Proxy Port:     http://0.0.0.0:{args.gateway_port} -> {UPSTREAM_URL}")
+    print(f" Prometheus Metrics:     http://0.0.0.0:{args.metrics_port}/metrics")
     print(f" Tracing Span Log:       {TRACE_LOG_FILE}")
     print("==========================================================================")
 
-    t_metrics = threading.Thread(target=start_metrics_server, daemon=True)
+    t_metrics = threading.Thread(target=start_metrics_server, args=(args.metrics_port,), daemon=True)
     t_metrics.start()
 
     try:
-        start_gateway_server()
+        start_gateway_server(args.gateway_port)
     except KeyboardInterrupt:
         print("\n[!] Shutting down telemetry gateway.")
 
