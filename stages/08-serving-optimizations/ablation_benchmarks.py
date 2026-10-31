@@ -4,9 +4,9 @@ ablation_benchmarks.py - Stage 08 Serving Optimization Ablation Suite
 Author: Srinivas Sarkar (ai-infra-systems)
 
 Empirically benchmarks the core serving optimization levers on LLM inference engines:
-1. FlashAttention (-fa 1 vs -fa 0): Prefill speedup and VRAM efficiency.
-2. Chunked Prefill (-ub 64 vs -ub 512): Mitigation of ITL stutter during prompt bursts.
-3. KV Cache Quantization (-ctk q8_0 -ctv q8_0 vs FP16): 50% VRAM reduction.
+1. FlashAttention (-fa / --flash-attn on vs off): Prefill speedup and VRAM efficiency.
+2. KV Cache Quantization (-ctk q8_0 -ctv q8_0 vs FP16): 50% VRAM reduction.
+3. Chunked Prefill (-ub 64 vs -ub 512): Prompt ingestion micro-batching.
 4. Prompt Prefix Caching: TTFT collapse on shared context reuse.
 """
 
@@ -26,6 +26,7 @@ DEFAULT_BIN = "/root/llama-bin/llama-b11963/llama-server"
 DEFAULT_MODEL = "/root/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf"
 PORT = 8080
 BASE_URL = f"http://127.0.0.1:{PORT}"
+LOG_FILE_PATH = "/tmp/llama_ablation.log"
 
 
 def get_vram_mb() -> float:
@@ -59,7 +60,7 @@ def kill_existing_server():
         subprocess.run(["pkill", "-9", "-x", "llama-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass
-    time.sleep(1.0)
+    time.sleep(1.2)
 
 
 def run_completion(prompt: str, max_tokens: int = 64, stream: bool = True) -> Dict[str, Any]:
@@ -121,40 +122,52 @@ def run_completion(prompt: str, max_tokens: int = 64, stream: bool = True) -> Di
 
 def test_flash_attention_ablation(binary: str, model: str) -> Dict[str, Any]:
     print("\n--------------------------------------------------------------------------")
-    print(" 1. ABLATION 1: FLASHATTENTION (-fa 1 vs -fa 0)")
+    print(" 1. ABLATION 1: FLASHATTENTION (--flash-attn on vs off)")
     print("--------------------------------------------------------------------------")
     results = {}
     long_prompt = "Write a comprehensive analysis of distributed systems concensus protocols. " * 30  # ~450 tokens
 
-    for fa_val in [0, 1]:
+    configs = [
+        ("FlashAttention=OFF", []),
+        ("FlashAttention=ON", ["-fa"])
+    ]
+
+    for label, extra_flags in configs:
         kill_existing_server()
         cmd = [
             binary, "-m", model, "-ngl", "99", "-c", "4096",
-            "--port", str(PORT), "--host", "127.0.0.1",
-            "-fa" if fa_val == 1 else "--no-warmup"  # fa flag
-        ]
-        if fa_val == 0:
-            # llama-server disables FA by omitting -fa or passing -fa 0
-            cmd = [binary, "-m", model, "-ngl", "99", "-c", "4096", "--port", str(PORT), "--host", "127.0.0.1"]
+            "--port", str(PORT), "--host", "127.0.0.1"
+        ] + extra_flags
 
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        wait_for_health()
+        with open(LOG_FILE_PATH, "w") as log_f:
+            proc = subprocess.Popen(cmd, stdout=log_f, stderr=subprocess.STDOUT)
+            healthy = wait_for_health(timeout=15.0)
+
+        if not healthy:
+            print(f"  [-] {label} failed to boot healthy within 15s.")
+            if os.path.exists(LOG_FILE_PATH):
+                with open(LOG_FILE_PATH, "r") as f:
+                    err_lines = f.readlines()
+                print("      Engine Error Output:")
+                for l in err_lines[-10:]:
+                    print(f"        {l.strip()}")
+            results[label] = {"error": "Server boot failed"}
+            continue
+
         time.sleep(0.5)
-
         vram = get_vram_mb()
-        # Warmup query
         run_completion("Hello", max_tokens=8)
-        # Benchmark query
         res = run_completion(long_prompt, max_tokens=64)
-        results[f"fa_{fa_val}"] = {
+        
+        results[label] = {
             "vram_mib": vram,
             "ttft_ms": res.get("ttft_ms", 0.0),
             "decode_tps": res.get("tps", 0.0)
         }
-        print(f"  FlashAttention={'ON' if fa_val == 1 else 'OFF'}:")
-        print(f"    VRAM Usage:  {vram:.1f} MiB")
-        print(f"    Prefill TTFT: {res.get('ttft_ms', 0.0):.2f} ms")
-        print(f"    Decode Speed: {res.get('tps', 0.0):.2f} tok/s")
+        print(f"  {label}:")
+        print(f"    VRAM Usage:   {vram:.1f} MiB")
+        print(f"    Prefill TTFT:  {res.get('ttft_ms', 0.0):.2f} ms")
+        print(f"    Decode Speed:  {res.get('tps', 0.0):.2f} tok/s")
 
         proc.kill()
         proc.wait()
@@ -182,10 +195,16 @@ def test_kv_cache_quantization_ablation(binary: str, model: str) -> Dict[str, An
             "--port", str(PORT), "--host", "127.0.0.1"
         ] + extra_flags
 
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        wait_for_health(timeout=25.0)
-        time.sleep(1.0)
+        with open(LOG_FILE_PATH, "w") as log_f:
+            proc = subprocess.Popen(cmd, stdout=log_f, stderr=subprocess.STDOUT)
+            healthy = wait_for_health(timeout=25.0)
 
+        if not healthy:
+            print(f"  [-] {label} failed to boot healthy.")
+            results[label] = {"error": "Boot failed"}
+            continue
+
+        time.sleep(1.0)
         vram = get_vram_mb()
         res = run_completion("Explain Kubernetes pod lifecycles.", max_tokens=32)
         results[label] = {
@@ -204,9 +223,54 @@ def test_kv_cache_quantization_ablation(binary: str, model: str) -> Dict[str, An
     return results
 
 
+def test_chunked_prefill_ablation(binary: str, model: str) -> Dict[str, Any]:
+    print("\n--------------------------------------------------------------------------")
+    print(" 3. ABLATION 3: CHUNKED PREFILL (-ub 64 vs -ub 512)")
+    print(" Measures Prompt Micro-batch Chunking Impact on TTFT & Throughput")
+    print("--------------------------------------------------------------------------")
+    results = {}
+    long_prompt = "Explain distributed consensus in raft algorithms. " * 30  # ~450 tokens
+
+    configs = [
+        ("-ub 512 (Standard Large Batch)", ["-ub", "512"]),
+        ("-ub 64 (Fine-Grained Chunking)", ["-ub", "64"])
+    ]
+
+    for label, extra_flags in configs:
+        kill_existing_server()
+        cmd = [
+            binary, "-m", model, "-ngl", "99",
+            "-c", "4096",
+            "--port", str(PORT), "--host", "127.0.0.1"
+        ] + extra_flags
+
+        with open(LOG_FILE_PATH, "w") as log_f:
+            proc = subprocess.Popen(cmd, stdout=log_f, stderr=subprocess.STDOUT)
+            healthy = wait_for_health(timeout=15.0)
+
+        if not healthy:
+            print(f"  [-] {label} failed to boot healthy.")
+            continue
+
+        time.sleep(0.5)
+        res = run_completion(long_prompt, max_tokens=64)
+        results[label] = {
+            "ttft_ms": res.get("ttft_ms", 0.0),
+            "decode_tps": res.get("tps", 0.0)
+        }
+        print(f"  Configuration: {label}")
+        print(f"    Prefill TTFT:  {res.get('ttft_ms', 0.0):.2f} ms")
+        print(f"    Decode Speed:  {res.get('tps', 0.0):.2f} tok/s")
+
+        proc.kill()
+        proc.wait()
+
+    return results
+
+
 def test_prompt_caching_ablation(binary: str, model: str) -> Dict[str, Any]:
     print("\n--------------------------------------------------------------------------")
-    print(" 3. ABLATION 3: PROMPT / PREFIX KV CACHE REUSE")
+    print(" 4. ABLATION 4: PROMPT / PREFIX KV CACHE REUSE")
     print("--------------------------------------------------------------------------")
     kill_existing_server()
     cmd = [
@@ -214,10 +278,15 @@ def test_prompt_caching_ablation(binary: str, model: str) -> Dict[str, Any]:
         "-c", "4096",
         "--port", str(PORT), "--host", "127.0.0.1"
     ]
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    wait_for_health()
-    time.sleep(0.5)
+    with open(LOG_FILE_PATH, "w") as log_f:
+        proc = subprocess.Popen(cmd, stdout=log_f, stderr=subprocess.STDOUT)
+        healthy = wait_for_health(timeout=15.0)
 
+    if not healthy:
+        print("  [-] Prompt caching test failed to boot server.")
+        return {}
+
+    time.sleep(0.5)
     system_prefix = "You are a Linux Kernel Systems Architect. Here is the operational specification: " + ("sys_call_entry_point_audit " * 40)
     
     # First turn: Cold prompt ingestion (full prefill required)
@@ -258,6 +327,7 @@ def main():
     try:
         fa_res = test_flash_attention_ablation(args.bin, args.model)
         kv_res = test_kv_cache_quantization_ablation(args.bin, args.model)
+        chunk_res = test_chunked_prefill_ablation(args.bin, args.model)
         cache_res = test_prompt_caching_ablation(args.bin, args.model)
 
         print("\n==========================================================================")
@@ -265,14 +335,21 @@ def main():
         print("==========================================================================")
         print(" Optimization Lever            | Metric Tested     | Measured Impact")
         print("-------------------------------+-------------------+---------------------------------")
-        if "fa_0" in fa_res and "fa_1" in fa_res:
-            fa_ttft_diff = fa_res["fa_0"]["ttft_ms"] - fa_res["fa_1"]["ttft_ms"]
-            print(f" FlashAttention (-fa)          | Prefill TTFT      | {fa_res['fa_1']['ttft_ms']:.1f} ms (vs {fa_res['fa_0']['ttft_ms']:.1f} ms without FA)")
+        if "FlashAttention=OFF" in fa_res and "FlashAttention=ON" in fa_res and "error" not in fa_res["FlashAttention=ON"]:
+            print(f" FlashAttention (-fa)          | Prefill TTFT      | {fa_res['FlashAttention=ON']['ttft_ms']:.1f} ms (vs {fa_res['FlashAttention=OFF']['ttft_ms']:.1f} ms without FA)")
+        elif "error" in fa_res.get("FlashAttention=ON", {}):
+            print(" FlashAttention (-fa)          | Compiler/Backend  | Unsupported / Not Compiled in Build")
+        
         if "FP16 (Standard)" in kv_res and "Q8_0 (Quantized)" in kv_res:
             vram_saved = kv_res["FP16 (Standard)"]["vram_mib"] - kv_res["Q8_0 (Quantized)"]["vram_mib"]
             pct_saved = (vram_saved / kv_res["FP16 (Standard)"]["vram_mib"]) * 100.0 if kv_res["FP16 (Standard)"]["vram_mib"] > 0 else 0
             print(f" KV Quantization (q8_0)        | VRAM Footprint    | -{vram_saved:.1f} MiB ({pct_saved:.1f}% total VRAM reduction)")
-        print(f" Prefix Caching                | Shared Prompt TTFT| {cache_res['speedup_factor']:.1f}x speedup ({cache_res['turn2_cached_ttft_ms']:.1f} ms vs {cache_res['turn1_cold_ttft_ms']:.1f} ms)")
+        
+        if "-ub 512 (Standard Large Batch)" in chunk_res and "-ub 64 (Fine-Grained Chunking)" in chunk_res:
+            print(f" Chunked Prefill (-ub 64)      | Micro-batch TTFT  | {chunk_res['-ub 64 (Fine-Grained Chunking)']['ttft_ms']:.1f} ms (vs {chunk_res['-ub 512 (Standard Large Batch)']['ttft_ms']:.1f} ms at ub=512)")
+
+        if "speedup_factor" in cache_res:
+            print(f" Prefix Caching                | Shared Prompt TTFT| {cache_res['speedup_factor']:.1f}x speedup ({cache_res['turn2_cached_ttft_ms']:.1f} ms vs {cache_res['turn1_cold_ttft_ms']:.1f} ms)")
         print("==========================================================================\n")
 
     finally:
