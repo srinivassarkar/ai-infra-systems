@@ -11,11 +11,28 @@ In Stage 01 through Stage 04, we evaluated raw silicon latency, cold-start virtu
 
 ---
 
-## 2. Empirical Telemetry Comparison: Unbuffered vs. Buffered Streaming
+## 2. Empirical Telemetry Comparison: Fleet Streaming Profiles
 
-*Hardware: NVIDIA L4 (24 GB GDDR6) on RACE Cloud Pod.*  
-*Upstream: `llama-server` running `Qwen2.5-Coder-1.5B-Instruct-Q4_K_M` on port 8080.*  
-*Load: 4 concurrent streaming clients requesting 128 max tokens via Server-Sent Events (SSE).*
+*Load: 4 concurrent streaming clients requesting 128 max tokens via Server-Sent Events (SSE).*  
+*Model: `Qwen2.5-Coder-1.5B-Instruct-Q4_K_M`.*
+
+### A. Apple Mac Studio M3 Ultra (Node 2: Unified Memory Workstation)
+*Direct unbuffered streaming on port 8080:*
+
+| Metric | Measured Value | Operational Interpretation |
+| :--- | :---: | :--- |
+| **Success Rate** | **4/4 (100.0%)** | Zero dropped connections or socket timeouts |
+| **Median TTFT** | **140.22 ms** | Clean prompt evaluation across 4 streams |
+| **P99 TTFT** | **214.30 ms** | Bounded tail latency under concurrent prefill |
+| **Median ITL (Inter-Token Latency)**| **12.88 ms** | **77.6 tokens/sec per user** (fluid typewriter reading) |
+| **P99 ITL (Tail Jitter)** | **16.86 ms** | Only 3.98 ms variance from median (negligible jitter) |
+| **Max ITL (Burst Stutter)** | **21.46 ms** | Zero buffer bloat; smooth word generation |
+| **Aggregate Throughput** | **312.64 tokens/sec**| Fully saturating the Metal compute pipeline |
+
+---
+
+### B. Enterprise Cloud Pod (Node 3: NVIDIA L4 24 GB GDDR6)
+*Reverse proxy buffering comparison on Nginx:*
 
 | Ingress Proxy Configuration | Listen Port | Median TTFT (ms) | P99 TTFT (ms) | Median ITL (ms/tok) | P99 ITL (Tail Jitter) | Max ITL (Burst Stutter) | Aggregate tok/s |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
