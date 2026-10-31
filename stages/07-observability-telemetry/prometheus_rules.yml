@@ -1,0 +1,65 @@
+# stages/07-observability-telemetry/prometheus_rules.yml
+# Production PromQL Alerting Rules & SLO Definitions for LLM Inference Fleet
+# Author: Srinivas Sarkar (ai-infra-systems)
+
+groups:
+  - name: llm_inference_slos
+    rules:
+      # 1. Golden Signal: Prefill Latency (TTFT) P95 SLO Breach
+      # Target: 95% of users receive their first streaming token within 250ms
+      - alert: LLMHighTimeToFirstTokenP95
+        expr: histogram_quantile(0.95, sum(rate(llm_ttft_seconds_bucket[2m])) by (le)) > 0.250
+        for: 1m
+        labels:
+          severity: critical
+          tier: inference-gateway
+        annotations:
+          summary: "LLM Prefill Phase SLO breached: P95 TTFT exceeds 250ms"
+          description: "P95 TTFT is currently {{ $value | printf \"%.3f\" }}s. Indicates prompt queue saturation or unbounded prompt batch lengths."
+
+      # 2. Golden Signal: Decode Latency (TPOT / ITL) Stutter
+      # Target: P99 token generation interval should never exceed 40ms (~25 tok/s floor)
+      - alert: LLMTokenGenerationStutterP99
+        expr: histogram_quantile(0.99, sum(rate(llm_tpot_seconds_bucket[2m])) by (le)) > 0.040
+        for: 1m
+        labels:
+          severity: warning
+          tier: inference-worker
+        annotations:
+          summary: "LLM Decode Phase Stutter: P99 Inter-Token Latency exceeds 40ms"
+          description: "P99 ITL is currently {{ $value | printf \"%.3f\" }}s (effective user perceived speed dropped below 25 tok/s)."
+
+      # 3. Golden Signal: KV Cache Memory Exhaustion
+      # Triggers proactive admission shedding before out-of-memory or cell evictions
+      - alert: LLMKVCacheNearExhaustion
+        expr: llamacpp:kv_cache_usage_ratio > 0.88
+        for: 30s
+        labels:
+          severity: critical
+          tier: memory-management
+        annotations:
+          summary: "KV Cache utilization exceeded 88%"
+          description: "Engine KV cache is at {{ $value | printf \"%.1f\" }}% capacity. Impending slot preemption or request rejection."
+
+      # 4. SRE Failure Mode: Gray Failure / Zombie Engine Detection
+      # Active streams are present at gateway, but upstream token emission has halted
+      - alert: LLMGrayFailureDetected
+        expr: llm_gateway_active_streams > 0 and rate(llm_gateway_tokens_total{type="completion"}[30s]) == 0
+        for: 15s
+        labels:
+          severity: page
+          tier: fault-injection
+        annotations:
+          summary: "Gray Failure detected: Inference threads frozen while TCP connections remain open"
+          description: "Gateway reports active client streams, but 0 completion tokens have been emitted for 30s. Trigger automated worker restart."
+
+      # 5. Hardware Saturation: GPU VRAM Pressure
+      - alert: LLMGPUVRAMCritical
+        expr: (llm_gpu_memory_used_bytes / llm_gpu_memory_total_bytes) > 0.95
+        for: 1m
+        labels:
+          severity: critical
+          tier: hardware-cuda
+        annotations:
+          summary: "GPU VRAM utilization above 95%"
+          description: "Host VRAM usage is at {{ $value | printf \"%.1f\" }}%. Imminent risk of cudaErrorMemoryAllocation."
