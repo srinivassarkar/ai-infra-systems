@@ -15,6 +15,100 @@ Because TTFT depends on client socket connection, network transit, and request q
 
 ## 2. Empirical Validation Telemetry: The 5 Golden Signals
 
+### 2.1 Fleet Node 2: Apple Mac Studio M3 Ultra (256 GB Unified Memory)
+*Hardware: Apple Mac Studio M3 Ultra (28 CPU cores, 80 GPU cores, 256 GB Unified LPDDR5X, ~800 GB/s bandwidth).*  
+*Model: `Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf`.*  
+*Ingress Layer: `telemetry_gateway.py` (Port 8002) $\rightarrow$ Upstream `llama-server` (Port 8080).*  
+*Metrics Exporter: Prometheus text exposition on Port 9095.*
+
+#### Upstream Engine Native Metrics Audit (`http://127.0.0.1:8080/metrics`)
+```text
+Sample Raw Upstream Metrics (15 series total):
+  llamacpp:prompt_tokens_total 41
+  llamacpp:prompt_tokens_cached_total 0
+  llamacpp:prompt_seconds_total 0.063677
+  llamacpp:tokens_predicted_total 64
+  llamacpp:tokens_predicted_seconds_total 0.470993
+  llamacpp:n_decode_total 64
+
+Native TTFT Histogram Present: NO (MISSING)
+Native TPOT Histogram Present: NO (MISSING)
+```
+*Architectural Verification:* `llama-server` natively tracks internal token sums and execution seconds, but completely lacks client-perceived TTFT and TPOT latency histograms. An ingress proxy/gateway layer is mandatory for production SRE monitoring.
+
+#### Ingress Streaming Latency Profile ($N=4$ Concurrent Streams)
+All 4 client streams executed concurrently through the gateway in 1.11s total duration:
+
+| Client | Max Tokens | Output Tokens | Measured TTFT | Decode Duration | E2E Request Duration | Effective TPOT / ITL | Decode Speed |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Client 1** | 64 | 66 tokens | **160.24 ms** | 944.32 ms | 1104.56 ms | **14.31 ms/tok** | 69.9 tok/s |
+| **Client 2** | 64 | 66 tokens | **110.88 ms** | 983.93 ms | 1094.81 ms | **14.91 ms/tok** | 67.1 tok/s |
+| **Client 3** | 64 | 66 tokens | **109.35 ms** | 984.46 ms | 1093.81 ms | **14.92 ms/tok** | 67.0 tok/s |
+| **Client 4** | 64 | 47 tokens | **111.92 ms** | 543.37 ms | 655.29 ms | **11.56 ms/tok** | 86.5 tok/s |
+
+* **Median TTFT:** $111.40\ \mathrm{ms}$ (well within the $250\ \mathrm{ms}$ SLO threshold).
+* **Mean Decode TPOT:** $13.92\ \mathrm{ms/token}$ ($71.8\ \text{tok/s}$ per concurrent stream, delivering smooth conversational streaming).
+
+#### Prometheus Unified Exposition Snapshot (Port 9095)
+```text
+# HELP llm_gateway_active_streams Current active concurrent streaming requests
+# TYPE llm_gateway_active_streams gauge
+llm_gateway_active_streams 0
+
+# HELP llm_gateway_requests_total Total number of inference requests handled
+# TYPE llm_gateway_requests_total counter
+llm_gateway_requests_total 4
+
+# HELP llm_gateway_tokens_total Total tokens processed
+# TYPE llm_gateway_tokens_total counter
+llm_gateway_tokens_total{type="prompt"} 252
+
+# HELP llm_ttft_seconds Time To First Token (Prefill Latency Histogram)
+# TYPE llm_ttft_seconds histogram
+llm_ttft_seconds_bucket{le="0.010"} 0
+llm_ttft_seconds_bucket{le="0.025"} 0
+llm_ttft_seconds_bucket{le="0.050"} 0
+llm_ttft_seconds_bucket{le="0.100"} 0
+llm_ttft_seconds_bucket{le="0.250"} 4
+llm_ttft_seconds_bucket{le="+Inf"} 4
+
+# HELP llm_tpot_seconds Time Per Output Token (Inter-Token Latency Histogram)
+# TYPE llm_tpot_seconds histogram
+llm_tpot_seconds_bucket{le="0.005"} 100
+llm_tpot_seconds_bucket{le="0.010"} 180
+llm_tpot_seconds_bucket{le="0.025"} 245
+llm_tpot_seconds_bucket{le="+Inf"} 245
+```
+
+#### OpenTelemetry Hierarchical Trace Audit (`telemetry_traces.jsonl`)
+```json
+{
+  "trace_id": "6929f630-0206-43f1-a7b6-02f2aacd05a8",
+  "name": "chat_completion",
+  "total_duration_ms": 1101.49,
+  "ttft_prefill_ms": 176.79,
+  "decode_phase_ms": 924.71,
+  "tpot_itl_ms": 14.68,
+  "tokens_emitted": 64,
+  "child_spans": [
+    {
+      "name": "prefill",
+      "duration_ms": 176.79
+    },
+    {
+      "name": "decode",
+      "duration_ms": 924.71,
+      "tokens": 64
+    }
+  ]
+}
+```
+*Span Cardinality Check:* Rather than emitting 64 individual spans for 64 tokens, the gateway emitted **exactly 1 parent span and 2 structured child spans** (`prefill` and `decode`), eliminating span collector overwhelm.
+
+---
+
+### 2.2 Fleet Node 3: NVIDIA L4 Cloud Pod (24 GB GDDR6)
+
 *Hardware: NVIDIA L4 (24 GB GDDR6, 300 GB/s bandwidth) on RACE Cloud Pod.*  
 *Model: `Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf`.*  
 *Ingress Layer: `telemetry_gateway.py` (Port 8002) $\rightarrow$ Upstream `llama-server` (Port 8080).*  
