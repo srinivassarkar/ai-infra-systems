@@ -36,14 +36,18 @@ Production inference engines handle KV cache memory using fundamentally differen
 ### The Mathematical Formula
 For Multi-Head Attention (MHA) and Grouped-Query Attention (GQA):
 
-$$\text{KV Cache Bytes per Token} = 2 \times \text{layers} \times \text{kv\_heads} \times \text{head\_dim} \times \text{bytes\_per\_element}$$
+$$\text{KV Cache Bytes per Token} = 2 \times L \times H_{\mathrm{kv}} \times D_{\mathrm{head}} \times B_{\mathrm{element}}$$
 
 Where:
 * Factor of $2$ accounts for separate Key ($K$) and Value ($V$) tensors.
-* $\text{bytes\_per\_element} = 2$ for FP16/BF16 ($\approx 1.0\ \mathrm{FLOP/byte}$ arithmetic intensity), $1$ for INT8/Q8_0, and $0.5$ for FP4/Q4_0.
-* For GQA, $\text{kv\_heads} = \frac{\text{q\_heads}}{\text{group\_ratio}}$ (e.g. Qwen 2.5 7B has 28 Q heads, 4 KV heads $\rightarrow 7\times$ reduction).
+* $L$: number of Transformer layers (`layers`).
+* $H_{\mathrm{kv}}$: number of Key-Value attention heads (`kv_heads`). For GQA, $H_{\mathrm{kv}} = \frac{H_q}{\text{group\_ratio}}$ (e.g. Qwen 2.5 7B has 28 Q heads, 4 KV heads $\rightarrow 7\times$ reduction).
+* $D_{\mathrm{head}}$: dimension per head (`head_dim`).
+* $B_{\mathrm{element}}$: bytes per tensor element ($B_{\mathrm{element}} = 2$ for FP16/BF16, $1$ for INT8/Q8_0, and $0.5$ for FP4/Q4_0).
 
-$$\text{Total KV Cache Memory (GiB)} = \frac{2 \times \text{layers} \times \text{kv\_heads} \times \text{head\_dim} \times \text{Context Length} \times \text{Concurrency } N \times \text{bytes\_per\_element}}{1024^3}$$
+$$\text{Total KV Cache Memory (GiB)} = \frac{2 \times L \times H_{\mathrm{kv}} \times D_{\mathrm{head}} \times C \times N \times B_{\mathrm{element}}}{1024^3}$$
+
+Where $C$ is the sequence context length and $N$ is the concurrent active user count.
 
 ---
 

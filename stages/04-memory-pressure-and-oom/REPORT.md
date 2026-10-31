@@ -38,14 +38,18 @@ A foundational distinction in production AI infrastructure:
 ## 4. First-Principles Mathematical Formulation
 
 ### The General Equation:
-$$\text{KV Bytes per Token} = 2 \times \text{layers} \times \text{kv\_heads} \times \text{head\_dim} \times \text{bytes\_per\_element}$$
+$$\text{KV Bytes per Token} = 2 \times L \times H_{\mathrm{kv}} \times D_{\mathrm{head}} \times B_{\mathrm{element}}$$
 
-$$\text{Total KV Cache Memory (GiB)} = \frac{2 \times \text{layers} \times \text{kv\_heads} \times \text{head\_dim} \times \text{Context Length} \times \text{Concurrency } N \times \text{bytes\_per\_element}}{1024^3}$$
+$$\text{Total KV Cache Memory (GiB)} = \frac{2 \times L \times H_{\mathrm{kv}} \times D_{\mathrm{head}} \times C \times N \times B_{\mathrm{element}}}{1024^3}$$
 
 Where:
 * Factor of $2$ accounts for separate Key ($K$) and Value ($V$) tensors.
-* $\text{bytes\_per\_element} = 2$ for FP16/BF16, $1$ for INT8/Q8_0, and $0.5$ for FP4/Q4_0.
-* For GQA, $\text{kv\_heads} = \frac{\text{q\_heads}}{\text{group\_ratio}}$ (e.g. Qwen 2.5 1.5B has 28 layers, 2 KV heads, 64 head dim $\rightarrow \mathbf{14,336\ \mathrm{bytes/token}}$).
+* $L$: number of Transformer layers (`layers`).
+* $H_{\mathrm{kv}}$: number of Key/Value attention heads (`kv_heads`). For GQA, $H_{\mathrm{kv}} = \frac{H_q}{\text{group\_ratio}}$ (e.g. Qwen 2.5 1.5B has 28 layers, 2 KV heads, 64 head dim $\rightarrow \mathbf{14,336\ \mathrm{bytes/token}}$).
+* $D_{\mathrm{head}}$: dimension per attention head (`head_dim`).
+* $B_{\mathrm{element}}$: bytes per tensor element ($B_{\mathrm{element}} = 2$ for FP16/BF16, $1$ for INT8/Q8_0, and $0.5$ for FP4/Q4_0).
+* $C$: context sequence length (`Context Length`).
+* $N$: concurrent active users (`Concurrency N`).
 
 ---
 
