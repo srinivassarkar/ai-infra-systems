@@ -1,15 +1,34 @@
+#!/usr/bin/env python3
+"""
+benchmark_streaming.py - Stage 05 Edge Streaming & Buffer Bloat Profiler
+Author: Srinivas Sarkar (ai-infra-systems)
+
+Measures the impact of reverse proxy buffering on Server-Sent Events (SSE) streaming:
+- Time-to-First-Token (TTFT)
+- Inter-Token Latency (ITL) distribution and jitter
+- Tokens per second and chunk burstiness
+"""
+
 import asyncio
 import time
 import json
 import statistics
 import argparse
-import httpx
+import sys
+from typing import List, Dict, Optional
 
-DEFAULT_URL = "http://localhost:11434/v1/chat/completions"
-DEFAULT_MODEL = "qwen2.5:1.5b"
-PROMPT = "Explain the difference between TCP TIME_WAIT and CLOSE_WAIT in three crisp bullet points."
+try:
+    import httpx
+except ImportError:
+    print("[!] httpx is required: pip install httpx")
+    sys.exit(1)
 
-async def send_stream(client, user_id, url=DEFAULT_URL, model=DEFAULT_MODEL, max_tokens=100):
+DEFAULT_URL = "http://127.0.0.1:8000/v1/chat/completions"
+DEFAULT_MODEL = "Qwen2.5-Coder-1.5B"
+PROMPT = "Explain the difference between TCP TIME_WAIT and CLOSE_WAIT in three crisp bullet points with deep technical detail."
+
+
+async def send_stream(client: httpx.AsyncClient, user_id: int, url: str, model: str, max_tokens: int) -> Optional[Dict]:
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": PROMPT}],
@@ -20,7 +39,8 @@ async def send_stream(client, user_id, url=DEFAULT_URL, model=DEFAULT_MODEL, max
     
     start_time = time.perf_counter()
     first_token_time = None
-    token_timestamps = []
+    token_timestamps: List[float] = []
+    chunk_sizes: List[int] = []
     total_tokens = 0
 
     try:
@@ -45,6 +65,7 @@ async def send_stream(client, user_id, url=DEFAULT_URL, model=DEFAULT_MODEL, max
                         if first_token_time is None:
                             first_token_time = now
                         token_timestamps.append(now)
+                        chunk_sizes.append(len(content))
                         total_tokens += 1
                 except Exception:
                     continue
@@ -53,15 +74,17 @@ async def send_stream(client, user_id, url=DEFAULT_URL, model=DEFAULT_MODEL, max
         if first_token_time is None or total_tokens < 2:
             return None
 
-        ttft_ms = (first_token_time - start_time) * 1000
+        ttft_ms = (first_token_time - start_time) * 1000.0
         gen_duration = end_time - first_token_time
-        tps = total_tokens / gen_duration if gen_duration > 0 else 0
+        tps = total_tokens / gen_duration if gen_duration > 0 else 0.0
         
         itls = [
-            (token_timestamps[i] - token_timestamps[i-1]) * 1000 
+            (token_timestamps[i] - token_timestamps[i-1]) * 1000.0 
             for i in range(1, len(token_timestamps))
         ]
-        avg_itl = statistics.mean(itls) if itls else 0
+        avg_itl = statistics.mean(itls) if itls else 0.0
+        p99_itl = sorted(itls)[int(len(itls) * 0.99)] if itls else 0.0
+        max_itl = max(itls) if itls else 0.0
 
         return {
             "user": user_id,
@@ -69,53 +92,58 @@ async def send_stream(client, user_id, url=DEFAULT_URL, model=DEFAULT_MODEL, max
             "ttft_ms": ttft_ms,
             "tps": tps,
             "avg_itl_ms": avg_itl,
+            "p99_itl_ms": p99_itl,
+            "max_itl_ms": max_itl,
             "total_s": end_time - start_time
         }
     except Exception as e:
         print(f"[User {user_id}] Error: {e}")
         return None
 
-async def main(concurrency, url=DEFAULT_URL, model=DEFAULT_MODEL):
+
+async def run_benchmark(concurrency: int, url: str, model: str, max_tokens: int):
     print(f"============================================================")
-    print(f"INFERENCE STREAMING BENCHMARK: Concurrency = {concurrency}")
-    print(f"Target: {url} | Model: {model}")
+    print(f"STAGE 05 STREAMING BENCHMARK: Concurrency = {concurrency}")
+    print(f"Target Endpoint: {url}")
     print(f"============================================================")
     
-    limits = httpx.Limits(max_keepalive_connections=concurrency, max_connections=concurrency*2)
+    limits = httpx.Limits(max_keepalive_connections=concurrency, max_connections=concurrency * 2)
     async with httpx.AsyncClient(limits=limits) as client:
-        tasks = [send_stream(client, i, url=url, model=model) for i in range(concurrency)]
+        tasks = [send_stream(client, i, url=url, model=model, max_tokens=max_tokens) for i in range(concurrency)]
         results = await asyncio.gather(*tasks)
 
     valid = [r for r in results if r is not None]
     if not valid:
-        print(f"[ERROR] All requests failed. Is your inference server running at {url}?")
+        print(f"[ERROR] All requests failed. Is your Nginx proxy running at {url}?")
         return
 
     ttfts = sorted([r["ttft_ms"] for r in valid])
     tpss = [r["tps"] for r in valid]
     itls = [r["avg_itl_ms"] for r in valid]
-    totals = sorted([r["total_s"] for r in valid])
+    p99_itls = [r["p99_itl_ms"] for r in valid]
+    max_itls = [r["max_itl_ms"] for r in valid]
 
     print(f"Success Rate:            {len(valid)}/{concurrency} ({(len(valid)/concurrency)*100:.1f}%)")
     print(f"Average Tokens Emitted:  {statistics.mean([r['tokens'] for r in valid]):.1f}")
-    print(f"------------------------------------------------------------")
-    print(f"1. TTFT (Time To First Token / Prefill Phase):")
-    print(f"   - Min (Fastest):      {min(ttfts):.1f} ms")
-    print(f"   - Median (p50):       {statistics.median(ttfts):.1f} ms")
-    print(f"   - p90:                {ttfts[int(len(ttfts)*0.9)]:.1f} ms")
-    print(f"   - p99:                {ttfts[-1]:.1f} ms")
-    print(f"2. Generation Throughput (Decode Phase):")
-    print(f"   - Mean Stream TPS:    {statistics.mean(tpss):.1f} tokens/sec")
-    print(f"   - Aggregate Node TPS: {sum(tpss):.1f} tokens/sec")
-    print(f"   - Inter-Token Delay:  {statistics.mean(itls):.1f} ms/token")
-    print(f"3. E2E Duration:")
-    print(f"   - p50 Latency:        {statistics.median(totals):.2f} s")
+    print(f"Median TTFT:             {statistics.median(ttfts):.2f} ms")
+    print(f"P99 TTFT:                {ttfts[int(len(ttfts)*0.99)]:.2f} ms")
+    print(f"Median ITL:              {statistics.median(itls):.2f} ms")
+    print(f"P99 ITL (Tail Jitter):   {statistics.median(p99_itls):.2f} ms")
+    print(f"Max ITL (Burst Stutter): {max(max_itls):.2f} ms")
+    print(f"Aggregate Throughput:    {sum(tpss):.2f} tokens/sec")
     print(f"============================================================\n")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Async Streaming Inference Benchmark (TTFT vs TPOT)")
-    parser.add_argument("--concurrency", type=int, default=1, help="Concurrent streaming requests")
-    parser.add_argument("--url", type=str, default=DEFAULT_URL, help="OpenAI-compatible chat completions URL")
-    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Model name")
+
+def main():
+    parser = argparse.ArgumentParser(description="Stage 05 Streaming Benchmark.")
+    parser.add_argument("--url", default=DEFAULT_URL, help="Target URL (e.g. http://127.0.0.1:8000/v1/chat/completions)")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model name")
+    parser.add_argument("--concurrency", type=int, default=4, help="Number of concurrent streams")
+    parser.add_argument("--max-tokens", type=int, default=128, help="Max tokens to generate")
     args = parser.parse_args()
-    asyncio.run(main(args.concurrency, url=args.url, model=args.model))
+
+    asyncio.run(run_benchmark(args.concurrency, args.url, args.model, args.max_tokens))
+
+
+if __name__ == "__main__":
+    main()
