@@ -4,7 +4,7 @@ ablation_benchmarks.py - Stage 08 Serving Optimization Ablation Suite
 Author: Srinivas Sarkar (ai-infra-systems)
 
 Empirically benchmarks the core serving optimization levers on LLM inference engines:
-1. FlashAttention (-fa / --flash-attn on vs off): Prefill speedup and VRAM efficiency.
+1. FlashAttention (-fa on vs -fa off): Prefill speedup and VRAM efficiency.
 2. KV Cache Quantization (-ctk q8_0 -ctv q8_0 vs FP16): 50% VRAM reduction.
 3. Chunked Prefill (-ub 64 vs -ub 512): Prompt ingestion micro-batching.
 4. Prompt Prefix Caching: TTFT collapse on shared context reuse.
@@ -122,14 +122,14 @@ def run_completion(prompt: str, max_tokens: int = 64, stream: bool = True) -> Di
 
 def test_flash_attention_ablation(binary: str, model: str) -> Dict[str, Any]:
     print("\n--------------------------------------------------------------------------")
-    print(" 1. ABLATION 1: FLASHATTENTION (--flash-attn on vs off)")
+    print(" 1. ABLATION 1: FLASHATTENTION (-fa on vs -fa off)")
     print("--------------------------------------------------------------------------")
     results = {}
     long_prompt = "Write a comprehensive analysis of distributed systems concensus protocols. " * 30  # ~450 tokens
 
     configs = [
-        ("FlashAttention=OFF", []),
-        ("FlashAttention=ON", ["-fa"])
+        ("FlashAttention=OFF", ["-fa", "off"]),
+        ("FlashAttention=ON", ["-fa", "on"])
     ]
 
     for label, extra_flags in configs:
@@ -336,7 +336,8 @@ def main():
         print(" Optimization Lever            | Metric Tested     | Measured Impact")
         print("-------------------------------+-------------------+---------------------------------")
         if "FlashAttention=OFF" in fa_res and "FlashAttention=ON" in fa_res and "error" not in fa_res["FlashAttention=ON"]:
-            print(f" FlashAttention (-fa)          | Prefill TTFT      | {fa_res['FlashAttention=ON']['ttft_ms']:.1f} ms (vs {fa_res['FlashAttention=OFF']['ttft_ms']:.1f} ms without FA)")
+            fa_diff = fa_res["FlashAttention=OFF"]["ttft_ms"] - fa_res["FlashAttention=ON"]["ttft_ms"]
+            print(f" FlashAttention (-fa on)       | Prefill TTFT      | {fa_res['FlashAttention=ON']['ttft_ms']:.1f} ms (vs {fa_res['FlashAttention=OFF']['ttft_ms']:.1f} ms without FA)")
         elif "error" in fa_res.get("FlashAttention=ON", {}):
             print(" FlashAttention (-fa)          | Compiler/Backend  | Unsupported / Not Compiled in Build")
         
