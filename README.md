@@ -48,7 +48,7 @@ flowchart TD
 │ Metric                        │ Node 1: GTX 1050 Ti      │ Node 2: M3 Ultra     │ Node 3: NVIDIA L4    │
 │                               │ Pascal (112 GB/s)        │ Apple UMA (800 GB/s) │ Ada (300 GB/s)       │
 ├───────────────────────────────┼──────────────────────────┼──────────────────────┼──────────────────────┤
-│ Single-Stream Decode TPOT     │ 19.6 ms/tok (51.0 tok/s) │ 7.75 ms/tok (129 tok/s) 5.59 ms/tok (179 tok/s) │
+│ Single-Stream Decode TPOT     │ 19.6 ms/tok (51.0 tok/s) │ 7.75 ms (129.4 tok/s)│ 5.59 ms (178.9 tok/s)│
 │ In-Slot Aggregate Throughput  │ 51.0 tok/s (N = 1)       │ 262.01 tok/s (N = 8) │ 457.58 tok/s (N = 8) │
 │ In-Slot P50 TTFT              │ 104.3 ms                 │ 76.67 ms             │ 43.00 ms             │
 │ Over-Capacity P50 TTFT (N=16) │ OOM / Unserviced         │ 729.65 ms (9.51x)    │ 428.21 ms (10.0x)    │
@@ -95,7 +95,7 @@ flowchart TD
 | **07** | `[Physical Silicon]` | **Observability & Telemetry:** Verified native `llama-server` observability gap (missing TTFT/TPOT histograms). Custom Telemetry Gateway captured 4 streams (median TTFT **111.40 ms**, TPOT **13.92 ms/tok**), exporting Prometheus-compatible /metrics and hierarchical trace log with zero per-token span explosion. | [Stage 07 Report](stages/07-observability-telemetry/REPORT.md) |
 | **08** | `[Physical Silicon]` | **Serving Optimization Ablation:** FlashAttention unlocked **+31.9% decode throughput** on M3 Ultra ($104.8 \rightarrow 138.2\ \text{tok/s}$); chunked prefill (`-ub 64`) stabilized decode fluidity at invariant $137.3\ \text{tok/s}$; prefix caching collapsed TTFT by **$2.22\times$** (M3) and **$3.86\times$** (L4). | [Stage 08 Report](stages/08-serving-optimizations/REPORT.md) |
 | **09** | `[Discrete-Event Simulation]` | **Production Autoscaling Lag:** Simulated $51.73\ \text{s}$ pod scaling lag chain on Kubernetes; modeled why reactive HPA fails to protect TTFT SLOs without buffer headroom; simulated KEDA queue-depth triggers. | [Stage 09 Report](stages/09-production-deployment/REPORT.md) |
-| **10** | `[Capacity Economics Engine]` | **Dual-Constraint Capacity Planning:** Modeled latency knee binding at 32 concurrent slots on M3 Ultra vs 4,656 VRAM slots ($\min(N_{\mathrm{mem}}, N_{\mathrm{SLO}})$). Unit economics: $\$0.33 / 1\text{M}$ tokens at $100\%$ load; $33.3\%$ KEDA savings. | [Stage 10 Report](stages/10-capacity-planning/REPORT.md) |
+| **10** | `[Capacity Economics Engine]` | **Dual-Constraint Capacity Planning:** Modeled latency knee binding at 32 concurrent slots on M3 Ultra vs 4,656 VRAM slots ($\min(N_{\mathrm{mem}}, N_{\mathrm{SLO}})$). Unit economics: $0.33 per 1M tokens at 100% load; 33.3% KEDA savings. | [Stage 10 Report](stages/10-capacity-planning/REPORT.md) |
 
 ---
 
@@ -135,12 +135,12 @@ ai-infra-systems/
 
 * **Small Quantized Models on Edge:** Because of the 4 GB GPU on Node 1, local experiments evaluate constrained parameter scales (0.5B to 3B parameters). Results describe this physical hardware honestly, not hypothetical cluster scale.
 * **Bare-Metal Apple Silicon Isolation:** Mac Studio M3 Ultra executes as a bare-metal inference workstation because container runtimes cannot access Apple Metal Performance Shaders (MPS) directly.
-* **Kubernetes Scaling Lag Simulation:** In Stage 09, the 51.73-second scaling lag chain and KEDA queue-depth dynamics are evaluated via a calibrated discrete-event simulation (`simulate_scaling_lag.py`) using empirical metrics from Stages 01–08, paired with production declarative manifests (`01-namespace.yaml` through `04-service-ingress.yaml`) ready for physical cluster deployment.
+* **Kubernetes Scaling Lag Simulation:** In Stage 09, the 51.73-second scaling lag chain and KEDA queue-depth dynamics are evaluated via a calibrated discrete-event simulation (`simulate_scaling_lag.py`) using empirical metrics from Stages 01–08, paired with production declarative manifests (`00-cluster-kind.yaml` through `04-load-test-k6.js`) ready for physical cluster deployment.
 * **Empirical Integrity:** Only measured numbers are published. Hypothetical cost savings are never claimed.
 
 ---
 
-## 8. Post-45 Day Roadmap: Secure Inference Box
+## 8. Next Step: Secure LLM Inference Platform
 
-For advanced enterprise environments (FinTech, healthcare, and defense) where prompt privacy and data leakage prevent LLM adoption, see our post-45 day design specification:
+For advanced enterprise environments (FinTech, healthcare, and defense) where prompt privacy and data leakage prevent LLM adoption, see our confidential serving platform:
 * **[Secure LLM Inference Platform](https://github.com/srinivassarkar/secure-llm-inference-platform):** Production-grade confidential LLM inference platform on Kubernetes combining an ephemeral zero-disk cryptographic gateway (X25519 + AES-256-GCM) with vLLM continuous batching and KEDA leading-signal autoscaling.
