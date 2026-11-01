@@ -106,28 +106,27 @@ ai-infra-systems/
 ├── README.md
 ├── docs/
 │   ├── interactive/                                     # Live interactive GPU-to-served-model visualizer
-│   │   ├── index.html
-│   │   └── from-gpu-to-served-model.html
+│   │   ├── index.html                                   # Web interactive model visualizer
+│   │   └── pipeline-simulator.html                      # Step-by-step inference pipeline simulator
 │   ├── 00-FOUNDATIONS-MODELS-ARCHITECTURES-INFERENCE.md  # Complete ML taxonomy & decision matrix
-│   ├── INFERENCE_ENGINEERING_ROADMAP.md                  # Master 8-domain curriculum & war-room Q&A
+│   ├── 01-ROOFLINE-AND-ARITHMETIC-INTENSITY.md          # Roofline mathematical modeling & intensity bounds
+│   ├── 02-VLLM-VS-SGLANG-SYSTEMS-ANATOMY.md             # Deep engine anatomy: PagedAttention vs RadixAttention
+│   ├── 03-5D-PARALLELISM-AND-DISTRIBUTED-SCALING.md     # TP, PP, DP, EP, SP distributed serving mechanics
 │   ├── ARCHITECTURE.md                                  # End-to-end platform architecture deep-dive
-│   ├── GLOSSARY.md                                      # Systems & inference mental models
+│   ├── GLOSSARY.md                                      # Systems & inference definitions & Rosetta Stone
 │   ├── EXPERIMENT_STANDARD.md                           # Standard template for all stage reports
-│   └── future-projects/
-│       └── SECURE_INFERENCE_BOX.md                      # Post-45 day cryptographic E2EE inference design
-├── stages/
-│   ├── 01-baseline-inference/                           # Roofline & single-stream latency
-│   ├── 02-cold-start-behavior/                          # Memory mapping & page faults
-│   ├── 03-concurrency-and-queues/                       # Head-of-line blocking & Little's Law
-│   ├── 04-memory-pressure-and-oom/                      # KV cache budgeting & OOM avoidance
-│   ├── 05-streaming-and-edge-proxy/                     # SSE streaming & proxy buffer tuning
-│   ├── 06-failure-injection/                            # Chaos triage, SIGSTOP & MTTR
-│   ├── 07-observability-telemetry/                      # Telemetry gateway, Prometheus exposition & trace log
-│   ├── 08-serving-optimizations/                        # FlashAttention, KV quant & prefix caching
-│   ├── 09-production-deployment/                        # KEDA autoscaling & scaling lag analysis
-│   └── 10-capacity-planning/                            # Dual-constraint sizing & TCO economics
-└── platform/
-    └── ingress/                                         # Nginx configurations & buffer tuning
+│   └── THE_10_STAGE_SYSTEMS_SYNTHESIS.md                # Comprehensive cross-stage empirical findings
+└── stages/
+    ├── 01-baseline-inference/                           # Roofline & single-stream latency
+    ├── 02-cold-start-behavior/                          # Memory mapping & page faults
+    ├── 03-concurrency-and-queues/                       # Head-of-line blocking & Little's Law
+    ├── 04-memory-pressure-and-oom/                      # KV cache budgeting & OOM avoidance
+    ├── 05-streaming-and-edge-proxy/                     # SSE streaming & proxy buffer tuning
+    ├── 06-failure-injection/                            # Chaos triage, SIGSTOP & MTTR
+    ├── 07-observability-telemetry/                      # Telemetry gateway, Prometheus exposition & trace log
+    ├── 08-serving-optimizations/                        # Continuous batching & quantization benchmarks
+    ├── 09-production-deployment/                        # KEDA autoscaling & scaling lag analysis
+    └── 10-capacity-planning/                            # Dual-constraint sizing & TCO economics
 ```
 
 ---
@@ -144,4 +143,4 @@ ai-infra-systems/
 ## 8. Post-45 Day Roadmap: Secure Inference Box
 
 For advanced enterprise environments (FinTech, healthcare, and defense) where prompt privacy and data leakage prevent LLM adoption, see our post-45 day design specification:
-* **[Secure Inference Box Design Document](docs/future-projects/SECURE_INFERENCE_BOX.md):** Application-layer end-to-end encryption (X25519 + AES-256-GCM), signed Ed25519 receipts, and automated canary tests proving prompts never touch persistent storage.
+* **[Secure LLM Inference Platform](https://github.com/srinivassarkar/secure-llm-inference-platform):** Production-grade confidential LLM inference platform on Kubernetes combining an ephemeral zero-disk cryptographic gateway (X25519 + AES-256-GCM) with vLLM continuous batching and KEDA leading-signal autoscaling.
