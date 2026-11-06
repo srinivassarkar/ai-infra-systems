@@ -7,7 +7,7 @@ This blueprint synthesizes the distributed systems architecture taught in top-ti
 ## 1. The Physical Constraint: Why Single-GPU Serving Fails
 
 A model's memory footprint during execution consists of three distinct components:
-$$\text{Total Memory} = M_{\text{weights}} + M_{\text{KV\_cache}} + M_{\text{activations}}$$
+$$\text{Total Memory} = M_{\text{weights}} + M_{\text{KV-cache}} + M_{\text{activations}}$$
 
 For a 70B parameter model in 16-bit precision ($\text{BF16}$):
 * **Model Weights:** $70 \times 10^9 \times 2\text{ bytes} = 140\text{ GB}$.

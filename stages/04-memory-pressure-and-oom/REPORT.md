@@ -138,7 +138,9 @@ VERIFICATION: Zero external memory fragmentation, exact reference counting verif
 ## 8. SRE Production Rules
 
 1. **Ingress Token-Budget Admission Control:** Always enforce worst-case token reservation at the API gateway before scheduling requests into dynamic engines like vLLM:
-   $$\text{Worst-Case RAM} = (P_{\text{prompt}} + G_{\text{max\_tokens}}) \times \text{Bytes per Token}$$
+   $$
+   \text{Worst-Case RAM} = (P_{\text{prompt}} + G_{\text{max-tokens}}) \times \text{Bytes per Token}
+   $$
    Reject with HTTP 429 or queue with backpressure if `Available KV Pool < Required RAM`.
 2. **Quantize KV Cache for Deep Context:** Quantizing KV tensors to 8-bit (`q8_0`) cuts memory by 50% with zero perceptible perplexity loss, effectively doubling the concurrent user capacity of any GPU.
 3. **Automatic Prefix Caching (APC):** Reusing physical KV cache blocks for common system prompts eliminates repetitive prefill computation and slashes TTFT by over 60%.

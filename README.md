@@ -6,7 +6,7 @@ How does LLM inference fail, slow down, and recover on real hardware? One cohesi
 > - **Physical Silicon Benchmarks (Stages 01, 02, 03, 05, 06, 07, 08):** Measured directly on physical hardware (Apple Mac Studio M3 Ultra, Cloud Enterprise NVIDIA L4, and Edge GTX 1050 Ti). Every latency and throughput number reflects real execution on physical silicon.
 > - **Discrete-Event Simulation & Capacity Modeling (Stages 04, 09, 10):** Modeled in Python prior to cluster deployment (Stage 04 PagedAttention simulator, Stage 09 Kubernetes scaling lag simulation, Stage 10 unit economics engine). No live Kubernetes cluster or KEDA operator was run in this initial suite; timing chains are discrete-event software simulations.
 >
-> **Executive Digest:** For a single-page cohesive synthesis of all ten stages, physical findings, and SRE production rules, read [The 10-Stage Systems Synthesis](docs/THE_10_STAGE_SYSTEMS_SYNTHESIS.md). For rapid interview recall, mathematical formulas, and SRE triage cheat codes, read the [2-Page Inference Systems Refresher](docs/LAST_MINUTE_REFRESHER.md).
+> **Executive Digest:** For a single-page cohesive synthesis of all ten stages, physical findings, and SRE production rules, read [The 10-Stage Systems Synthesis](docs/THE_10_STAGE_SYSTEMS_SYNTHESIS.md).
 >
 > **Interactive Systems Visualizer:**
 > Walk through the mechanical cause-and-effect chain from GPU matrix math to vLLM continuous batching in our live [Interactive Inference Simulator](https://srinivassarkar.github.io/ai-infra-systems/). Source code available in [`docs/interactive/`](docs/interactive/).
@@ -170,7 +170,6 @@ ai-infra-systems/
 │   ├── 03-5D-PARALLELISM-AND-DISTRIBUTED-SCALING.md     # TP, PP, DP, EP, SP distributed serving mechanics
 │   ├── ARCHITECTURE.md                                  # End-to-end platform architecture deep-dive
 │   ├── GLOSSARY.md                                      # Systems & inference definitions & Rosetta Stone
-│   ├── LAST_MINUTE_REFRESHER.md                         # 2-page rapid interview recall & SRE triage cheatsheet
 │   ├── EXPERIMENT_STANDARD.md                           # Standard template for all stage reports
 │   └── THE_10_STAGE_SYSTEMS_SYNTHESIS.md                # Comprehensive cross-stage empirical findings
 └── stages/

@@ -63,7 +63,7 @@ As a Platform/SRE engineer, you already master Domains 3, 5, 6, and 7. Your gap 
 ### The Two Mandatory Formulas to Memorize
 
 #### Formula 1: KV Cache Memory per Token
-$$\text{KV Cache Bytes per Token} = 2 \times \text{layers} \times \text{kv\_heads} \times \text{head\_dim} \times \text{bytes\_per\_element}$$
+$$\text{KV Cache Bytes per Token} = 2 \times \text{layers} \times \text{kv-heads} \times \text{head-dim} \times \text{bytes-per-element}$$
 
 *Example (Llama 3.2 3B in FP16):*
 $$2 \times 28 \text{ layers} \times 8 \text{ KV heads} \times 128 \text{ head dim} \times 2 \text{ bytes} = 114,688 \text{ bytes} \approx 112 \text{ KiB per token}$$
