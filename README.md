@@ -6,7 +6,7 @@ How does LLM inference fail, slow down, and recover on real hardware? One cohesi
 > - **Physical Silicon Benchmarks (Stages 01, 02, 03, 05, 06, 07, 08):** Measured directly on physical hardware (Apple Mac Studio M3 Ultra, Cloud Enterprise NVIDIA L4, and Edge GTX 1050 Ti). Every latency and throughput number reflects real execution on physical silicon.
 > - **Discrete-Event Simulation & Capacity Modeling (Stages 04, 09, 10):** Modeled in Python prior to cluster deployment (Stage 04 PagedAttention simulator, Stage 09 Kubernetes scaling lag simulation, Stage 10 unit economics engine). No live Kubernetes cluster or KEDA operator was run in this initial suite; timing chains are discrete-event software simulations.
 >
-> **Executive Digest:** For a single-page cohesive synthesis of all ten stages, physical findings, and SRE production rules, read [The 10-Stage Systems Synthesis](docs/THE_10_STAGE_SYSTEMS_SYNTHESIS.md).
+> **Executive Digest:** For a single-page cohesive synthesis of all ten stages, physical findings, and SRE production rules, read [The 10-Stage Systems Synthesis](docs/THE_10_STAGE_SYSTEMS_SYNTHESIS.md). For rapid interview recall, mathematical formulas, and SRE triage cheat codes, read the [2-Page Inference Systems Refresher](docs/LAST_MINUTE_REFRESHER.md).
 >
 > **Interactive Systems Visualizer:**
 > Walk through the mechanical cause-and-effect chain from GPU matrix math to vLLM continuous batching in our live [Interactive Inference Simulator](https://srinivassarkar.github.io/ai-infra-systems/). Source code available in [`docs/interactive/`](docs/interactive/).
@@ -80,6 +80,62 @@ flowchart TD
 | **09** | Kubernetes Autoscaling & Scaling Lag | **Discrete-Event Simulation** | Scaling lag simulator (`simulate_scaling_lag.py`) + K8s manifests | Python Simulator (Lag Model) |
 | **10** | Capacity Planning & Token Economics | **Mathematical Economics Engine** | Hardware sizing engine + 24h diurnal cost calculator | Python Economics Engine |
 
+```text
+========================================================================================
+THE 10-STAGE INFERENCE ENGINEERING MASTER ARSENAL (100% COMPLETE)
+========================================================================================
+[x] STAGE 01: Baseline Inference Profiling & Silicon Physics
+    - Prefill = Compute-bound (TFLOPS) | Decode = Memory-bandwidth bound (GB/s).
+    - 1 token = streaming the entire model weights. Doubling size halves speed.
+    - WAN latency dominates TTFT (95%); SSE streaming renders distance invisible.
+
+[x] STAGE 02: Cold-Start Behavior, Memory Paging & UNIX Signals
+    - mmap on GPUs is an illusion. CudaMemcpy and Metal force eager loading anyway.
+    - Eager malloc (--no-mmap) eliminates the 500ms first-request page-fault storm.
+    - exec /app/llama-server guarantees PID 1 signal capture (SIGTERM 143 vs SIGKILL 137).
+
+[x] STAGE 03: Multi-Slot Concurrency, Queuing & Head-of-Line Blocking
+    - Sizing Law: -c = parallel * per_slot_context.
+    - Prefill-Decode Interference: large prompts freeze active decode streams.
+    - Fix: Chunked Prefill (--ubatch / -ub) breaks prompts into micro-batches.
+
+[x] STAGE 04: Memory Pressure, Dynamic PagedAttention & OOM Triaging
+    - Host RAM OOM (Exit 137 / SIGKILL) vs GPU VRAM OOM (cudaErrorMemoryAllocation).
+    - Static Pre-allocation (llama.cpp) cannot OOM mid-request.
+    - Dynamic PagedAttention (vLLM) swaps KV-blocks to CPU RAM, triggering 137 if unbudgeted.
+
+[x] STAGE 05: Edge Streaming, Nginx Buffering & Client Backpressure
+    - proxy_buffering off; kills the 4KB buffer delay and typewriter stutter.
+    - proxy_set_header X-Accel-Buffering no; informs upstream CDNs.
+    - proxy_ignore_client_abort off; halts GPU generation when clients disconnect.
+
+[x] STAGE 06: Chaos Engineering, Deterministic MTTR & The Gray Failure Paradox
+    - Process MTTR is mathematically deterministic (<2.7s on L4/M3 Ultra, sigma < 30ms).
+    - The Gray Failure Trap: deadlocked processes pass Layer 4 TCP checks (kernel space).
+    - AI workloads must ALWAYS use Layer 7 HTTP /health checks.
+
+[x] STAGE 07: Observability, The 5 Golden Signals & Tracing
+    - Total HTTP duration is a lie; track TTFT (Histogram) and TPOT/ITL (Histogram).
+    - Queue Depth (requests_deferred) is the primary leading saturation indicator.
+    - Hierarchical Tracing: Avoid span cardinality explosion (never 1 span per token).
+
+[x] STAGE 08: Serving Engine Optimizations & The Ablation Matrix
+    - FlashAttention (-fa 1): Tiled SRAM online softmax collapses prefill by 3.35x.
+    - KV Cache Quantization (-ctk q8_0): Halves KV VRAM, doubling concurrency capacity.
+    - Prompt Prefix Caching (--cache-prompt): Slashes multi-turn TTFT by 70-90%.
+
+[x] STAGE 09: Kubernetes Orchestration, KEDA Autoscaling & Scaling Lag
+    - The GPU Saturation Illusion: Never autoscale on GPU utilization; use Queue Depth.
+    - The 51.7-second Scaling Lag: Reactive autoscaling cannot protect TTFT SLOs alone.
+    - preStop drain hooks (/health/drain + sleep 15) eliminate 502 Bad Gateway errors.
+
+[x] STAGE 10: Capacity Planning, Sizing Bounds & Token Economics
+    - The Universal Capacity Law: Concurrency Limit = min(N_mem, N_SLO).
+    - Never size by VRAM alone; latency knee bounds real production throughput.
+    - Self-hosted economics: $1.01 / 1M tokens on L4 Spot vs $2.50+ on closed APIs.
+========================================================================================
+```
+
 ---
 
 ## 5. Measured Results
@@ -114,6 +170,7 @@ ai-infra-systems/
 │   ├── 03-5D-PARALLELISM-AND-DISTRIBUTED-SCALING.md     # TP, PP, DP, EP, SP distributed serving mechanics
 │   ├── ARCHITECTURE.md                                  # End-to-end platform architecture deep-dive
 │   ├── GLOSSARY.md                                      # Systems & inference definitions & Rosetta Stone
+│   ├── LAST_MINUTE_REFRESHER.md                         # 2-page rapid interview recall & SRE triage cheatsheet
 │   ├── EXPERIMENT_STANDARD.md                           # Standard template for all stage reports
 │   └── THE_10_STAGE_SYSTEMS_SYNTHESIS.md                # Comprehensive cross-stage empirical findings
 └── stages/
