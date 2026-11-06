@@ -7,7 +7,9 @@
 Capacity planning in enterprise LLM serving is frequently miscalculated by dividing available GPU VRAM by token KV cache sizes. This naive memory calculation assumes that if tokens physically fit into memory, the hardware can serve them within SLA boundaries.
 
 Stage 10 empirically repudiates this approach, proving the **Dual-Constraint Capacity Axiom**:
-$$\text{Effective Concurrency Capacity} = \min\left(N_{\mathrm{VRAM\ Ceiling}},\ N_{\mathrm{SLO\ Latency\ Knee}}\right)$$
+$$
+\text{Effective Concurrency Capacity} = \min\left(N_{\text{VRAM Ceiling}},\ N_{\text{SLO Latency Knee}}\right)
+$$
 
 For models $\le 7\mathrm{B}$ parameters operating on modern accelerators (such as the NVIDIA L4 with 24 GB GDDR6), Grouped-Query Attention (GQA) renders KV cache memory remarkably cheap. Consequently, **the latency knee binds at $N=8$ slots long before VRAM runs out** ($414$ slots). Sizing an inference cluster on VRAM arithmetic alone overprovisions concurrency by $50\times$, destroying user TTFT.
 
@@ -19,7 +21,7 @@ For models $\le 7\mathrm{B}$ parameters operating on modern accelerators (such a
 *Context Length: $4{,}096\ \mathrm{tokens}$ per user.*  
 *Target SLO: $\mathrm{TTFT} \le 250\ \mathrm{ms}$, $\mathrm{TPOT} \le 40\ \mathrm{ms}$.*
 
-| Hardware Platform | Total Memory (GB) | Memory Bandwidth (GB/s) | Theoretical VRAM Limit ($N_{\mathrm{mem}}$) | Measured SLO Knee ($N_{\mathrm{SLO}}$) | Binding Constraint | Effective Production Capacity |
+| Hardware Platform | Total Memory (GB) | Memory Bandwidth (GB/s) | Theoretical VRAM Limit (N_mem) | Measured SLO Knee (N_SLO) | Binding Constraint | Effective Production Capacity |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Node 3: NVIDIA L4 (Cloud Spot)** | 24.0 GB | 300 GB/s | 414 slots | **8 slots** | **Latency (SLO Knee)** | **8 slots** |
 | **Node 2: Mac Studio M3 Ultra** | 256.0 GB | 800 GB/s | 4,656 slots | **32 slots** | **Latency (SLO Knee)** | **32 slots** |
@@ -41,13 +43,13 @@ Because inference clusters rarely operate at 100% constant saturation without qu
 
 | Hardware Platform | All-Inclusive Hourly Cost | 100% Peak Utilization | 50% Daytime Production | 20% Off-Peak Night |
 | :--- | :---: | :---: | :---: | :---: |
-| **Node 3: NVIDIA L4 (Cloud Spot)** | $\$0.350\ /\ \mathrm{hr}$ | **$\$0.5074$** | **$\$1.0147$** | **$\$2.5368$** |
-| **Node 2: Mac Studio M3 Ultra** | $\$0.288\ /\ \mathrm{hr}$ | **$\$0.3333$** | **$\$0.6667$** | **$\$1.6667$** |
-| **Node 1: Edge GTX 1050 Ti** | $\$0.017\ /\ \mathrm{hr}$ | **$\$0.1124$** | **$\$0.2249$** | **$\$0.5622$** |
+| **Node 3: NVIDIA L4 (Cloud Spot)** | $0.350 / hr | **$0.51 / 1M** | **$1.01 / 1M** | **$2.54 / 1M** |
+| **Node 2: Mac Studio M3 Ultra** | $0.288 / hr | **$0.33 / 1M** | **$0.67 / 1M** | **$1.67 / 1M** |
+| **Node 1: Edge GTX 1050 Ti** | $0.017 / hr | **$0.11 / 1M** | **$0.22 / 1M** | **$0.56 / 1M** |
 
 ### Economic Takeaways:
-1. **Self-Hosted Cloud vs Closed APIs:** At 50% daytime production utilization, self-hosting on NVIDIA L4 cloud spot costs **$\$1.01$ per 1M tokens**. This represents a **$60\% - 75\%$ cost savings** over closed proprietary API endpoints (which typically bill $\$2.50 - \$5.00$ per 1M output tokens).
-2. **Owned Silicon Economics:** Owned hardware (Mac Studio M3 Ultra) amortized over a 3-year lifecycle delivers tokens at **$\$0.67$ per 1M tokens** at 50% utilization, making it an exceptional testbed for internal enterprise R&D.
+1. **Self-Hosted Cloud vs Closed APIs:** At 50% daytime production utilization, self-hosting on NVIDIA L4 cloud spot costs **$1.01 per 1M tokens**. This represents a **$60\% - 75\%$ cost savings** over closed proprietary API endpoints (which typically bill $\$2.50 - \$5.00$ per 1M output tokens).
+2. **Owned Silicon Economics:** Owned hardware (Mac Studio M3 Ultra) amortized over a 3-year lifecycle delivers tokens at **$0.67 per 1M tokens** at 50% utilization, making it an exceptional testbed for internal enterprise R&D.
 
 ---
 
@@ -62,10 +64,10 @@ We simulated a 24-hour enterprise business cycle:
 
 | Metric | Static 24/7 Provisioning (3 Pods Constant) | KEDA Event-Driven Autoscaling (1 - 3 Pods) | Delta / Economic Impact |
 | :--- | :---: | :---: | :---: |
-| **Total Daily Expenditure** | **$\$25.20\ /\ \text{day}$** | **$\$16.80\ /\ \text{day}$** | **-$8.40 / day (33.3% Cost Reduction)** |
-| **Monthly Projected Spend** | $\$756.00\ /\ \text{mo}$ | $\$504.00\ /\ \text{mo}$ | **-$252.00 / month saved per model** |
-| **Scaling-Lag SLO Window** | $0.00\ \text{min}$ (Pre-warmed) | **$0.86\ \text{min}$ ($51.73\ \text{s}$)** | Morning burst queue wait during pod spin-up |
+| **Total Daily Expenditure** | **$25.20 / day** | **$16.80 / day** | **-$8.40 / day (33.3% Cost Reduction)** |
+| **Monthly Projected Spend** | **$756.00 / mo** | **$504.00 / mo** | **-$252.00 / month saved per model** |
+| **Scaling-Lag SLO Window** | 0.00 min (Pre-warmed) | **0.86 min (51.73 s)** | Morning burst queue wait during pod spin-up |
 
 ### Production SRE Synthesis & Recommendations:
-1. **KEDA Delivers $33.3\%$ Direct Cost Reduction:** Scaling from 1 pod at night to 3 pods during peak hours saves $\$8.40$ per day per model instance.
+1. **KEDA Delivers $33.3\%$ Direct Cost Reduction:** Scaling from 1 pod at night to 3 pods during peak hours saves $8.40 per day per model instance.
 2. **Mitigating the 51.7s Morning Scaling Lag:** To prevent the 0.86-minute SLO violation window during the 08:00 AM burst transition, configure a Kubernetes **Scheduled Cron HPA** to pre-warm 1 additional pod at **07:55 AM**, absorbing the burst seamlessly without paying for 24/7 static overprovisioning.

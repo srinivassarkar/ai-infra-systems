@@ -15,15 +15,25 @@ Stage 10 establishes the **Enterprise Capacity Planning & Token Economics Framew
 
 ## 2. Theoretical Framework: Sizing Bounds
 
-### The Memory Capacity Ceiling ($N_{\mathrm{mem}}$)
-$$N_{\mathrm{mem}} = \left\lfloor \frac{V_{\mathrm{total}} - V_{\mathrm{weights}} - V_{\mathrm{overhead}}}{S \times L \times 2 \times H_{\mathrm{kv}} \times D_{\mathrm{head}} \times B_{\mathrm{element}}} \right\rfloor$$
+### The Memory Capacity Ceiling (N_mem)
 
-### The Latency Knee Bound ($N_{\mathrm{SLO}}$)
-From Stage 03 Little's Law and slot saturation telemetry, when active requests exceed physical parallel slots ($N > S_{\mathrm{engine}}$), prompt ingestion queues in FIFO backlog, triggering exponential TTFT degradation:
-$$\mathrm{TTFT}_{\mathrm{effective}} = \mathrm{TTFT}_{\mathrm{prefill}} + \frac{Q \times T_{\mathrm{request}}}{S_{\mathrm{engine}}}$$
+$$
+N_{\text{mem}} = \left\lfloor \frac{V_{\text{total}} - V_{\text{weights}} - V_{\text{overhead}}}{S \times L \times 2 \times H_{\text{kv}} \times D_{\text{head}} \times B_{\text{element}}} \right\rfloor
+$$
+
+### The Latency Knee Bound (N_SLO)
+
+From Stage 03 Little's Law and slot saturation telemetry, when active requests exceed physical parallel slots (`N > S_engine`), prompt ingestion queues in FIFO backlog, triggering exponential TTFT degradation:
+
+$$
+\text{TTFT}_{\text{effective}} = \text{TTFT}_{\text{prefill}} + \frac{Q \times T_{\text{request}}}{S_{\text{engine}}}
+$$
 
 ### The Universal Capacity Law
-$$\text{Production Concurrency Limit} = \min\left(N_{\mathrm{mem}}, N_{\mathrm{SLO}}\right)$$
+
+$$
+\text{Production Concurrency Limit} = \min\left(N_{\text{mem}}, N_{\text{SLO}}\right)
+$$
 
 ---
 
@@ -45,7 +55,7 @@ Here is the exact output produced by `capacity_economics_engine.py`:
 ### A. Dual-Constraint Sizing Matrix
 Model: `Qwen2.5-Coder-1.5B (Q4_K_M)` | Target SLO: $\mathrm{TTFT} \le 250\ \mathrm{ms}$, $\mathrm{TPOT} \le 40\ \mathrm{ms}$:
 
-| Hardware Platform | Memory Limit ($N_{\mathrm{mem}}$) | SLO Latency Knee ($N_{\mathrm{SLO}}$) | Binding Constraint | Effective Production Slots |
+| Hardware Platform | Memory Limit (N_mem) | SLO Latency Knee (N_SLO) | Binding Constraint | Effective Production Slots |
 | :--- | :---: | :---: | :--- | :---: |
 | **Node 3: NVIDIA L4 (Cloud Spot)** | 414 slots | **8 slots** | Latency (SLO Knee) | **8 slots** |
 | **Node 2: Mac Studio M3 Ultra** | 4,656 slots | **32 slots** | Latency (SLO Knee) | **32 slots** |
