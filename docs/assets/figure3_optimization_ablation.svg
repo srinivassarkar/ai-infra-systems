@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" width="100%" height="100%" style="background:#0d1117; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <!-- Title & Subtitle -->
+  <text x="450" y="38" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="700">Figure 3: Serving Engine Optimization Ablation (Stage 08)</text>
+  <text x="450" y="62" text-anchor="middle" fill="#8b949e" font-size="13">Empirical Levers Isolated on NVIDIA L4 (Qwen2.5-Coder-1.5B, 32K Context)</text>
+
+  <!-- SECTION 1: FlashAttention (-fa 1 vs -fa 0) -->
+  <text x="80" y="108" fill="#ffffff" font-size="14" font-weight="700">1. FlashAttention (SRAM Online Softmax Tiling vs Naive Attention)</text>
+  
+  <text x="80" y="135" fill="#8b949e" font-size="12">Standard Attention (-fa off):</text>
+  <rect x="300" y="122" width="450" height="20" rx="4" fill="#ef4444" opacity="0.8"/>
+  <text x="760" y="137" fill="#ff7b72" font-size="12" font-weight="700">108.41 ms TTFT</text>
+
+  <text x="80" y="165" fill="#8b949e" font-size="12">FlashAttention (-fa on):</text>
+  <rect x="300" y="152" width="134" height="20" rx="4" fill="#10b981"/>
+  <text x="445" y="167" fill="#7ee787" font-size="12" font-weight="700">32.36 ms (3.35x Speedup!)</text>
+
+
+  <!-- SECTION 2: KV Cache Quantization (FP16 vs q8_0 at 32K context) -->
+  <text x="80" y="215" fill="#ffffff" font-size="14" font-weight="700">2. KV Cache Quantization at 32K Context (-ctk q8_0 vs FP16)</text>
+  
+  <text x="80" y="242" fill="#8b949e" font-size="12">Standard FP16 KV Cache:</text>
+  <rect x="300" y="229" width="460" height="20" rx="4" fill="#ef4444" opacity="0.8"/>
+  <text x="770" y="244" fill="#ff7b72" font-size="12" font-weight="700">2,156 MiB VRAM</text>
+
+  <text x="80" y="272" fill="#8b949e" font-size="12">8-bit Quantized KV (-ctk q8_0):</text>
+  <rect x="300" y="259" width="370" height="20" rx="4" fill="#3b82f6"/>
+  <text x="680" y="274" fill="#58a6ff" font-size="12" font-weight="700">1,738 MiB (-418 MiB Saved / 51% KV Cut)</text>
+
+
+  <!-- SECTION 3: Automatic Prefix Caching (APC) -->
+  <text x="80" y="322" fill="#ffffff" font-size="14" font-weight="700">3. Automatic Prefix Caching (--cache-prompt in Multi-Turn)</text>
+  
+  <text x="80" y="349" fill="#8b949e" font-size="12">Turn 1 (Cold Prompt Prefill):</text>
+  <rect x="300" y="336" width="380" height="20" rx="4" fill="#f59e0b" opacity="0.8"/>
+  <text x="690" y="351" fill="#f59e0b" font-size="12" font-weight="700">46.56 ms TTFT</text>
+
+  <text x="80" y="379" fill="#8b949e" font-size="12">Turn 2 (Prefix Cache Hit):</text>
+  <rect x="300" y="366" width="98" height="20" rx="4" fill="#10b981"/>
+  <text x="410" y="381" fill="#7ee787" font-size="12" font-weight="700">12.06 ms (3.86x Collapse!)</text>
+
+
+  <!-- SECTION 4: Chunked Prefill Protection -->
+  <text x="80" y="428" fill="#ffffff" font-size="14" font-weight="700">4. Chunked Prefill Fluidity Protection (-ub 64 vs -ub 512)</text>
+  <text x="80" y="450" fill="#8b949e" font-size="12">Unchunked (-ub 512): Ingests 1500 tokens in 1 burst -> Triggers 15.4x Inter-Token Latency stutter (122 ms spike).</text>
+  <text x="80" y="468" fill="#8b949e" font-size="12">Chunked (-ub 64): Micro-batches prompt -> Inter-Token Latency remains rock solid (&lt;16 ms) across active streams.</text>
+
+  <!-- Bottom Insight -->
+  <rect x="80" y="485" width="740" height="26" rx="4" fill="#1f242c" stroke="#8957e5" stroke-width="1"/>
+  <text x="450" y="502" text-anchor="middle" fill="#d2a8ff" font-size="11.5" font-weight="600">Engineering Rule: FlashAttention accelerates compute; KV-quant doubles capacity; Chunking preserves UX.</text>
+</svg>

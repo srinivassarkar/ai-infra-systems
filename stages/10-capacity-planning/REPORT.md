@@ -17,7 +17,7 @@ For models $\le 7\mathrm{B}$ parameters operating on modern accelerators (such a
 
 ## 2. Empirical Sizing Matrix: Memory Ceiling vs. Latency Knee
 
-*Model: `Qwen2.5-Coder-1.5B-Instruct-Q4_K_M` (0.85 GB weights, GQA 28 layers, 2 KV heads, 64 head_dim).*  
+*Model: `Qwen2.5-Coder-1.5B-Instruct-Q4_K_M` (~0.99 GB weights, GQA 28 layers, 2 KV heads, 64 head_dim).*  
 *Context Length: $4{,}096\ \mathrm{tokens}$ per user.*  
 *Target SLO: $\mathrm{TTFT} \le 250\ \mathrm{ms}$, $\mathrm{TPOT} \le 40\ \mathrm{ms}$.*
 

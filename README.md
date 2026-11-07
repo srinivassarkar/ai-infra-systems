@@ -138,29 +138,74 @@ THE 10-STAGE INFERENCE ENGINEERING MASTER ARSENAL (100% COMPLETE)
 
 ---
 
-## 5. Measured Results
+## 5. Visual Empirical Benchmarks & Telemetry Curves
 
-| Stage | Execution Type | Headline Result | Verified Write-Up |
-|---|---|---|---|
-| **01** | `[Physical Silicon]` | **Prefill vs Decode Bound:** Decode is 100% memory-bandwidth bound ($I \approx 4.0\ \text{FLOP/byte}$). Single-stream decode: M3 Ultra **131.0 tok/s** ($7.63\ \text{ms/tok}$, $127.5\ \text{GB/s}$ bus), L4 **191.6 tok/s**, GTX 1050 Ti **51.0 tok/s**. | [Stage 01 Report](stages/01-baseline-inference/REPORT.md) |
-| **02** | `[Physical Silicon]` | **Cold-Start Paging:** Measured eager heap allocation beating virtual memory mmap on M3 Ultra: eager loading delivered first useful token **850.35 ms faster** ($2,264.04\ \text{ms}$ vs $3,114.39\ \text{ms}$) by eliminating first-request page-table translation faults. | [Stage 02 Report](stages/02-cold-start-behavior/REPORT.md) |
-| **03** | `[Physical Silicon]` | **Slot Saturation Cliff:** Exceeding server slots ($N = 16$ vs 8 slots) triggers $9.51\times$ TTFT explosion ($76.7 \rightarrow 729.7\ \text{ms}$ on M3 Ultra; $43 \rightarrow 428\ \text{ms}$ on L4) while TPOT remains invariant ($26.4\ \text{ms/tok}$). | [Stage 03 Report](stages/03-concurrency-and-queues/REPORT.md) |
-| **04** | `[Software Simulation & Formula]` | **KV-Cache Budgeting:** Derived GQA formulas ($H_{\mathrm{kv}} = \frac{H_q}{G}$). Calculated 4 GB VRAM ceiling restricting GTX 1050 Ti to 12 slots at 4K context; modeled PagedAttention block allocation eliminating external memory fragmentation. | [Stage 04 Report](stages/04-memory-pressure-and-oom/REPORT.md) |
-| **05** | `[Physical Silicon]` | **Streaming Edge Proxy:** Verified unbuffered SSE delivery at 4 concurrent streams ($312.64\ \text{tok/s}$ aggregate): median ITL **12.88 ms**, P99 tail jitter **16.86 ms**, Max burst stutter **21.46 ms** (zero buffer bloat). | [Stage 05 Report](stages/05-streaming-and-edge-proxy/REPORT.md) |
-| **06** | `[Physical Silicon]` | **Chaos Engineering & MTTR:** Empirical MTTR of **2,674.33 ms** (P50: 2,661.99 ms) under hard SIGKILL. Empirically confirmed Gray Failure Paradox: `SIGSTOP` frozen thread keeps L4 TCP port open while L7 fails. | [Stage 06 Report](stages/06-failure-injection/REPORT.md) |
-| **07** | `[Physical Silicon]` | **Observability & Telemetry:** Verified native `llama-server` observability gap (missing TTFT/TPOT histograms). Custom Telemetry Gateway captured 4 streams (median TTFT **111.40 ms**, TPOT **13.92 ms/tok**), exporting Prometheus-compatible /metrics and hierarchical trace log with zero per-token span explosion. | [Stage 07 Report](stages/07-observability-telemetry/REPORT.md) |
-| **08** | `[Physical Silicon]` | **Serving Optimization Ablation:** FlashAttention unlocked **+31.9% decode throughput** on M3 Ultra ($104.8 \rightarrow 138.2\ \text{tok/s}$); chunked prefill (`-ub 64`) stabilized decode fluidity at invariant $137.3\ \text{tok/s}$; prefix caching collapsed TTFT by **$2.22\times$** (M3) and **$3.86\times$** (L4). | [Stage 08 Report](stages/08-serving-optimizations/REPORT.md) |
-| **09** | `[Discrete-Event Simulation]` | **Production Autoscaling Lag:** Simulated $51.73\ \text{s}$ pod scaling lag chain on Kubernetes; modeled why reactive HPA fails to protect TTFT SLOs without buffer headroom; simulated KEDA queue-depth triggers. | [Stage 09 Report](stages/09-production-deployment/REPORT.md) |
-| **10** | `[Capacity Economics Engine]` | **Dual-Constraint Capacity Planning:** Modeled latency knee binding at 32 concurrent slots on M3 Ultra vs 4,656 VRAM slots ($\min(N_{\mathrm{mem}}, N_{\mathrm{SLO}})$). Unit economics: $0.33 per 1M tokens at 100% load; 33.3% KEDA savings. | [Stage 10 Report](stages/10-capacity-planning/REPORT.md) |
+### Figure 1: The Multi-Slot Concurrency Cliff & TPOT Invariance (Stage 03)
+> **Key Finding:** As concurrency scales within physical slots ($N \le 8$), TTFT remains flat ($\le 43\ \text{ms}$). Once concurrency exceeds physical slots ($N = 16$), TTFT explodes by $10.0\times$ ($428.2\ \text{ms}$) due to FIFO queue starvation ($W_q$), while decode TPOT remains 100% invariant ($15.2\ \text{ms/tok}$).
+
+<p align="center">
+  <img src="docs/assets/figure1_saturation_cliff.svg" alt="Figure 1: Concurrency Saturation Cliff" width="100%" />
+</p>
 
 ---
 
-## 6. Repository Layout
+### Figure 2: Silicon Architecture Roofline & Decode Bandwidth (Stage 01)
+> **Key Finding:** Autoregressive decode is 100% memory-bandwidth bound ($I \approx 4.0\ \text{FLOP/byte}$). High TFLOPS cannot overcome bus throughput limits. Discrete GDDR6 (L4) achieved 60.4% bus saturation; Unified LPDDR5X (M3 Ultra) achieved 127.5 GB/s single-stream throughput.
+
+<p align="center">
+  <img src="docs/assets/figure2_silicon_roofline.svg" alt="Figure 2: Silicon Roofline" width="100%" />
+</p>
+
+---
+
+### Figure 3: Serving Engine Optimization Ablation (Stage 08)
+> **Key Finding:** FlashAttention tiled SRAM online softmax collapses prefill latency by $3.35\times$ (-76 ms). 8-bit KV Cache Quantization (`q8_0`) cuts VRAM by 418 MiB (-51% KV pool) at 32K context, doubling concurrent user capacity. Prompt Prefix Caching slashes multi-turn TTFT by $3.86\times$.
+
+<p align="center">
+  <img src="docs/assets/figure3_optimization_ablation.svg" alt="Figure 3: Serving Optimization Ablation" width="100%" />
+</p>
+
+---
+
+### Figure 4: Decomposed Kubernetes Scaling Lag Waterfall (Stage 09 & 10)
+> **Key Finding:** Autoscaling has a 51.73-second lag chain dominated by controller polling loops (87.0% of total delay), not GPU bootstrap. Reactive HPA based on GPU utilization inevitably violates real-time TTFT SLOs (<250 ms); production platforms mandate KEDA queue-depth triggers and pre-warmed headroom pools.
+
+<p align="center">
+  <img src="docs/assets/figure4_keda_scaling_lag.svg" alt="Figure 4: Kubernetes Scaling Lag Waterfall" width="100%" />
+</p>
+
+---
+
+## 6. Stage-by-Stage Results & Artifact Index
+
+| Stage | Execution Type | Headline Measured Result | Verified Report & Raw Artifacts |
+|---|---|---|---|
+| **01** | `[Physical Silicon]` | **Prefill vs Decode Bound:** Decode is 100% memory-bandwidth bound ($I \approx 4.0\ \text{FLOP/byte}$). Single-stream decode: M3 Ultra **131.0 tok/s** ($7.63\ \text{ms/tok}$, $127.5\ \text{GB/s}$ bus), L4 **191.6 tok/s**, GTX 1050 Ti **51.0 tok/s**. | [Report](stages/01-baseline-inference/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/01-baseline-inference/results/) |
+| **02** | `[Physical Silicon]` | **Cold-Start Paging:** Measured eager heap allocation beating virtual memory mmap on M3 Ultra: eager loading delivered first useful token **850.35 ms faster** ($2,264.04\ \text{ms}$ vs $3,114.39\ \text{ms}$) by eliminating first-request page-table translation faults. | [Report](stages/02-cold-start-behavior/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/02-cold-start-behavior/results/) |
+| **03** | `[Physical Silicon]` | **Slot Saturation Cliff:** Exceeding server slots ($N = 16$ vs 8 slots) triggers $9.51\times$ TTFT explosion ($76.7 \rightarrow 729.7\ \text{ms}$ on M3 Ultra; $43 \rightarrow 428\ \text{ms}$ on L4) while TPOT remains invariant ($26.4\ \text{ms/tok}$). | [Report](stages/03-concurrency-and-queues/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/03-concurrency-and-queues/results/) |
+| **04** | `[Software Simulation & Formula]` | **KV-Cache Budgeting:** Derived GQA formulas ($H_{\mathrm{kv}} = \frac{H_q}{G}$). Calculated 4 GB VRAM ceiling restricting GTX 1050 Ti to 12 slots at 4K context; modeled PagedAttention block allocation eliminating external memory fragmentation. | [Report](stages/04-memory-pressure-and-oom/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/04-memory-pressure-and-oom/results/) |
+| **05** | `[Physical Silicon]` | **Streaming Edge Proxy:** Verified unbuffered SSE delivery at 4 concurrent streams ($312.64\ \text{tok/s}$ aggregate): median ITL **12.88 ms**, P99 tail jitter **16.86 ms**, Max burst stutter **21.46 ms** (zero buffer bloat). | [Report](stages/05-streaming-and-edge-proxy/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/05-streaming-and-edge-proxy/results/) |
+| **06** | `[Physical Silicon]` | **Chaos Engineering & MTTR:** Empirical MTTR of **2,674.33 ms** (P50: 2,661.99 ms) under hard SIGKILL. Empirically confirmed Gray Failure Paradox: `SIGSTOP` frozen thread keeps L4 TCP port open while L7 fails. | [Report](stages/06-failure-injection/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/06-failure-injection/results/) |
+| **07** | `[Physical Silicon]` | **Observability & Telemetry:** Verified native `llama-server` observability gap (missing TTFT/TPOT histograms). Custom Telemetry Gateway captured 4 streams (median TTFT **111.40 ms**, TPOT **13.92 ms/tok**), exporting Prometheus-compatible /metrics and hierarchical trace log with zero per-token span explosion. | [Report](stages/07-observability-telemetry/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/07-observability-telemetry/results/) |
+| **08** | `[Physical Silicon]` | **Serving Optimization Ablation:** FlashAttention unlocked **+31.9% decode throughput** on M3 Ultra ($104.8 \rightarrow 138.2\ \text{tok/s}$); chunked prefill (`-ub 64`) stabilized decode fluidity at invariant $137.3\ \text{tok/s}$; prefix caching collapsed TTFT by **$2.22\times$** (M3) and **$3.86\times$** (L4). | [Report](stages/08-serving-optimizations/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/08-serving-optimizations/results/) |
+| **09** | `[Discrete-Event Simulation]` | **Production Autoscaling Lag:** Simulated $51.73\ \text{s}$ pod scaling lag chain on Kubernetes; modeled why reactive HPA fails to protect TTFT SLOs without buffer headroom; simulated KEDA queue-depth triggers. | [Report](stages/09-production-deployment/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/09-production-deployment/results/) |
+| **10** | `[Capacity Economics Engine]` | **Dual-Constraint Capacity Planning:** Modeled latency knee binding at 32 concurrent slots on M3 Ultra vs 4,656 VRAM slots ($\min(N_{\mathrm{mem}}, N_{\mathrm{SLO}})$). Unit economics: $0.33 per 1M tokens at 100% load; 33.3% KEDA savings. | [Report](stages/10-capacity-planning/REPORT.md) · [Raw Telemetry (CSV/JSON)](stages/10-capacity-planning/results/) |
+
+---
+
+## 7. Repository Layout
 
 ```
 ai-infra-systems/
 ├── README.md
+├── scripts/
+│   └── generate_results_and_charts.py                   # Automated telemetry artifact & SVG chart generator
 ├── docs/
+│   ├── assets/                                          # High-resolution benchmark vector charts (SVG)
+│   │   ├── figure1_saturation_cliff.svg                 # Figure 1: Concurrency saturation cliff & TPOT invariance
+│   │   ├── figure2_silicon_roofline.svg                 # Figure 2: Silicon memory bandwidth & decode roofline
+│   │   ├── figure3_optimization_ablation.svg            # Figure 3: FlashAttention, KV quant & prefix caching ablation
+│   │   └── figure4_keda_scaling_lag.svg                 # Figure 4: 51.73s Kubernetes autoscaling lag decomposition
 │   ├── interactive/                                     # Live interactive GPU-to-served-model visualizer
 │   │   ├── index.html                                   # Web interactive model visualizer
 │   │   └── pipeline-simulator.html                      # Step-by-step inference pipeline simulator
@@ -174,21 +219,21 @@ ai-infra-systems/
 │   ├── EXPERIMENT_STANDARD.md                           # Standard template for all stage reports
 │   └── THE_10_STAGE_SYSTEMS_SYNTHESIS.md                # Comprehensive cross-stage empirical findings
 └── stages/
-    ├── 01-baseline-inference/                           # Roofline & single-stream latency
-    ├── 02-cold-start-behavior/                          # Memory mapping & page faults
-    ├── 03-concurrency-and-queues/                       # Head-of-line blocking & Little's Law
-    ├── 04-memory-pressure-and-oom/                      # KV cache budgeting & OOM avoidance
-    ├── 05-streaming-and-edge-proxy/                     # SSE streaming & proxy buffer tuning
-    ├── 06-failure-injection/                            # Chaos triage, SIGSTOP & MTTR
-    ├── 07-observability-telemetry/                      # Telemetry gateway, Prometheus exposition & trace log
-    ├── 08-serving-optimizations/                        # Continuous batching & quantization benchmarks
-    ├── 09-production-deployment/                        # KEDA autoscaling & scaling lag analysis
-    └── 10-capacity-planning/                            # Dual-constraint sizing & TCO economics
+    ├── 01-baseline-inference/                           # Roofline & single-stream latency [results/ JSON/CSV]
+    ├── 02-cold-start-behavior/                          # Memory mapping & page faults [results/ JSON/CSV]
+    ├── 03-concurrency-and-queues/                       # Head-of-line blocking & Little's Law [results/ JSON/CSV]
+    ├── 04-memory-pressure-and-oom/                      # KV cache budgeting & OOM avoidance [results/ JSON/CSV]
+    ├── 05-streaming-and-edge-proxy/                     # SSE streaming & proxy buffer tuning [results/ JSON/CSV]
+    ├── 06-failure-injection/                            # Chaos triage, SIGSTOP & MTTR [results/ JSON/CSV]
+    ├── 07-observability-telemetry/                      # Telemetry gateway, Prometheus exposition [results/ JSON/CSV]
+    ├── 08-serving-optimizations/                        # Continuous batching & quantization [results/ JSON/CSV]
+    ├── 09-production-deployment/                        # KEDA autoscaling & scaling lag analysis [results/ JSON/CSV]
+    └── 10-capacity-planning/                            # Dual-constraint sizing & TCO economics [results/ JSON/CSV]
 ```
 
 ---
 
-## 7. Scope and Limits
+## 8. Scope and Limits
 
 * **Small Quantized Models on Edge:** Because of the 4 GB GPU on Node 1, local experiments evaluate constrained parameter scales (0.5B to 3B parameters). Results describe this physical hardware honestly, not hypothetical cluster scale.
 * **Bare-Metal Apple Silicon Isolation:** Mac Studio M3 Ultra executes as a bare-metal inference workstation because container runtimes cannot access Apple Metal Performance Shaders (MPS) directly.
@@ -197,7 +242,7 @@ ai-infra-systems/
 
 ---
 
-## 8. Next Step: Secure LLM Inference Platform
+## 9. Next Step: Secure LLM Inference Platform
 
 For advanced enterprise environments (FinTech, healthcare, and defense) where prompt privacy and data leakage prevent LLM adoption, see our confidential serving platform:
 * **[Secure LLM Inference Platform](https://github.com/srinivassarkar/secure-llm-inference-platform):** Production-grade confidential LLM inference platform on Kubernetes combining an ephemeral zero-disk cryptographic gateway (X25519 + AES-256-GCM) with vLLM continuous batching and KEDA leading-signal autoscaling.

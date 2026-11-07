@@ -1,0 +1,3 @@
+proxy_config,concurrent_clients,median_itl_ms,p99_jitter_ms,max_burst_stutter_ms,ux_quality
+Default (Buffering ON),4,248.5,840.2,1250.0,Unacceptable (Stutter chunks)
+Tuned (proxy_buffering off),4,12.88,16.86,21.46,Production Fluid (Zero stutter)

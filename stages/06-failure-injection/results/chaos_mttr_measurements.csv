@@ -1,0 +1,6 @@
+fault_type,trial,detect_time_ms,restart_time_ms,readiness_time_ms,total_mttr_ms,probe_layer,status,action
+SIGKILL (Process Abort),1,12.4,2645.1,18.2,2675.7,,,
+SIGKILL (Process Abort),2,11.8,2631.9,17.9,2661.6,,,
+SIGKILL (Process Abort),3,12.1,2655.4,18.3,2685.8,,,
+SIGSTOP (Gray Failure Freeze),,,,,,Layer 4 (TCP SYN),False Healthy (Deadlock Masked),Packet SYN-ACK answered by kernel
+SIGSTOP (Gray Failure Freeze),,,,,,Layer 7 (HTTP /health),True Failure Detected,Timeout triggered container restart

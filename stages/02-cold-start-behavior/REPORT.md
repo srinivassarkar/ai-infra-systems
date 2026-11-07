@@ -39,7 +39,7 @@ All trials measured the time required for a cold process to bind the network por
 In operating system theory, `mmap` is praised for near-instantaneous process boot because it creates virtual memory pointers without reading bytes into physical RAM upfront.
 
 However, our empirical tests reveal that **GPU offloading breaks this mechanism completely on both architectures**:
-* **On Discrete NVIDIA GPUs:** The GPU execution cores cannot address CPU virtual memory. To offload the model, `llama-server` executes `cudaMemcpy` during startup to copy all 1.1 GB of weights across the PCIe 4.0 bus into GPU GDDR6 VRAM. To transmit those bytes over the bus, the host kernel must page-fault every single page immediately.
+* **On Discrete NVIDIA GPUs:** The GPU execution cores cannot address CPU virtual memory. To offload the model, `llama-server` executes `cudaMemcpy` during startup to copy all ~0.99 GB of weights across the PCIe 4.0 bus into GPU GDDR6 VRAM. To transmit those bytes over the bus, the host kernel must page-fault every single page immediately.
 * **On Apple Unified Memory:** While Apple Silicon has no PCIe bus, the Metal framework requires an allocated and committed `MTLBuffer` pointer before scheduling compute shaders. When Metal commits the buffer, the kernel commits and faults the pages into physical unified DRAM at startup.
 * **Result:** Total cold-start latency ($t_{\mathrm{ready}}$) is virtually identical between `mmap=ON` and `mmap=OFF` on both GPU architectures.
 
@@ -51,7 +51,7 @@ On the Mac Studio M3 Ultra, eager allocation (`mmap=OFF`) delivered the first us
 ### Discovery 3: Where Lazy `mmap` Actually Works (CPU Paging Ablation)
 When we forced execution onto the host CPU (`-ngl 0`), the classical virtual memory trade-off finally appeared:
 * **Lazy Paging (`mmap=ON`):** $t_{\mathrm{ready}} = \mathbf{1322.32\ \mathrm{ms}}$. The server booted **$379.15\ \mathrm{ms}$ faster** because it avoided reading all weights into heap memory upfront.
-* **Eager Allocation (`mmap=OFF`):** $t_{\mathrm{ready}} = \mathbf{1701.47\ \mathrm{ms}}$ (+28.7% boot delay). The process blocked until all 1.1 GB was read into RAM.
+* **Eager Allocation (`mmap=OFF`):** $t_{\mathrm{ready}} = \mathbf{1701.47\ \mathrm{ms}}$ (+28.7% boot delay). The process blocked until all ~0.99 GB was read into RAM.
 * **The Paging Tax:** While lazy `mmap` booted 379 ms faster, its First-Request TTFT paid a page-fault penalty (**$172.75\ \mathrm{ms}$** vs **$136.49\ \mathrm{ms}$** on eager read).
 
 ### Discovery 4: The "First-Request Kernel Tax" ($2.1\times$ Latency Spike on CUDA)

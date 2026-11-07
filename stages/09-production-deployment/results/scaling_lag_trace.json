@@ -1,0 +1,51 @@
+[
+  {
+    "step": 1,
+    "subsystem": "Prometheus Metric Scrape",
+    "duration_seconds": 15.0,
+    "cumulative_seconds": 15.0,
+    "pct_total": 29.0
+  },
+  {
+    "step": 2,
+    "subsystem": "KEDA Polling Interval",
+    "duration_seconds": 15.0,
+    "cumulative_seconds": 30.0,
+    "pct_total": 29.0
+  },
+  {
+    "step": 3,
+    "subsystem": "Kubernetes HPA Sync Loop",
+    "duration_seconds": 15.0,
+    "cumulative_seconds": 45.0,
+    "pct_total": 29.0
+  },
+  {
+    "step": 4,
+    "subsystem": "kube-scheduler Binding",
+    "duration_seconds": 1.5,
+    "cumulative_seconds": 46.5,
+    "pct_total": 2.9
+  },
+  {
+    "step": 5,
+    "subsystem": "containerd Runtime Init",
+    "duration_seconds": 2.0,
+    "cumulative_seconds": 48.5,
+    "pct_total": 3.9
+  },
+  {
+    "step": 6,
+    "subsystem": "CUDA Context & Model Page-in",
+    "duration_seconds": 1.23,
+    "cumulative_seconds": 49.73,
+    "pct_total": 2.4
+  },
+  {
+    "step": 7,
+    "subsystem": "Readiness Probe Pass (/health)",
+    "duration_seconds": 2.0,
+    "cumulative_seconds": 51.73,
+    "pct_total": 3.9
+  }
+]

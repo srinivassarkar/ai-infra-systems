@@ -1,0 +1,32 @@
+[
+  {
+    "platform": "NVIDIA L4 Spot",
+    "hourly_cost_usd": 0.35,
+    "vram_capacity_slots": 414,
+    "slo_latency_knee_slots": 8,
+    "binding_constraint": "Latency Knee",
+    "cost_per_1m_tokens_peak": 0.5074,
+    "cost_per_1m_tokens_prod": 1.0147,
+    "cost_per_1m_tokens_night": 2.5368
+  },
+  {
+    "platform": "Mac Studio M3 Ultra",
+    "hourly_cost_usd": 0.288,
+    "vram_capacity_slots": 4656,
+    "slo_latency_knee_slots": 32,
+    "binding_constraint": "Latency Knee",
+    "cost_per_1m_tokens_peak": 0.3333,
+    "cost_per_1m_tokens_prod": 0.6667,
+    "cost_per_1m_tokens_night": 1.6667
+  },
+  {
+    "platform": "GTX 1050 Ti Edge",
+    "hourly_cost_usd": 0.017,
+    "vram_capacity_slots": 48,
+    "slo_latency_knee_slots": 2,
+    "binding_constraint": "Compute & VRAM",
+    "cost_per_1m_tokens_peak": 0.1124,
+    "cost_per_1m_tokens_prod": 0.2249,
+    "cost_per_1m_tokens_night": 0.5622
+  }
+]

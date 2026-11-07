@@ -106,7 +106,7 @@ Here are the real outputs produced by our tools on the physical hardware:
 VRAM BUDGET ESTIMATOR: 1.5B Model (Q4_K_M)
    Context: 32768 tokens | Concurrency: 8 users
 ============================================================
-1. Model Weights:      0.81 GB
+1. Model Weights:      ~0.99 GB (~986 MB)
 2. KV Cache (Dynamic): 28.00 GB
 3. CUDA/Scratch Base:  0.35 GB
 ------------------------------------------------------------

@@ -1,0 +1,8 @@
+step,subsystem,duration_seconds,cumulative_seconds,pct_total
+1,Prometheus Metric Scrape,15.0,15.0,29.0
+2,KEDA Polling Interval,15.0,30.0,29.0
+3,Kubernetes HPA Sync Loop,15.0,45.0,29.0
+4,kube-scheduler Binding,1.5,46.5,2.9
+5,containerd Runtime Init,2.0,48.5,3.9
+6,CUDA Context & Model Page-in,1.23,49.73,2.4
+7,Readiness Probe Pass (/health),2.0,51.73,3.9

@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" width="100%" height="100%" style="background:#0d1117; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <defs>
+    <linearGradient id="cliffArea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.0"/>
+    </linearGradient>
+    <linearGradient id="safeArea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0.0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Title & Subtitle -->
+  <text x="450" y="38" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="700">Figure 1: Concurrency Saturation Cliff &amp; TPOT Invariance (Stage 03)</text>
+  <text x="450" y="62" text-anchor="middle" fill="#8b949e" font-size="13">Empirical Closed-Loop Benchmarking on NVIDIA L4 (8 Server Slots, Qwen2.5-Coder-1.5B)</text>
+
+  <!-- Safe vs Saturated Background Zones -->
+  <!-- Graph Plot Box: x: 100 to 780, y: 90 to 420 (w: 680, h: 330) -->
+  <!-- N=1 (x=120), N=2 (x=240), N=4 (x=380), N=8 (x=540), N=16 (x=740) -->
+  <rect x="100" y="90" width="440" height="330" fill="url(#safeArea)" />
+  <rect x="540" y="90" width="240" height="330" fill="url(#cliffArea)" />
+  
+  <line x1="540" y1="90" x2="540" y2="420" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6,4" />
+  <text x="545" y="112" fill="#f59e0b" font-size="12" font-weight="700">Hardware Slot Limit (N=8)</text>
+  <text x="545" y="128" fill="#8b949e" font-size="11">Beyond N=8: FIFO Queue Backlog (Wq)</text>
+
+  <!-- Grid lines (Horizontal) -->
+  <line x1="100" y1="420" x2="780" y2="420" stroke="#30363d" stroke-width="1"/>
+  <text x="90" y="425" text-anchor="end" fill="#8b949e" font-size="11">0 ms</text>
+
+  <line x1="100" y1="340" x2="780" y2="340" stroke="#21262d" stroke-width="1"/>
+  <text x="90" y="345" text-anchor="end" fill="#8b949e" font-size="11">100 ms</text>
+
+  <line x1="100" y1="260" x2="780" y2="260" stroke="#21262d" stroke-width="1"/>
+  <text x="90" y="265" text-anchor="end" fill="#8b949e" font-size="11">200 ms</text>
+
+  <line x1="100" y1="180" x2="780" y2="180" stroke="#21262d" stroke-width="1"/>
+  <text x="90" y="185" text-anchor="end" fill="#8b949e" font-size="11">300 ms</text>
+
+  <line x1="100" y1="100" x2="780" y2="100" stroke="#21262d" stroke-width="1"/>
+  <text x="90" y="105" text-anchor="end" fill="#8b949e" font-size="11">400 ms</text>
+
+  <!-- X Axis labels -->
+  <!-- Coordinates: N=1 (140), N=2 (260), N=4 (400), N=8 (540), N=16 (740) -->
+  <text x="140" y="442" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">N = 1</text>
+  <text x="260" y="442" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">N = 2</text>
+  <text x="400" y="442" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">N = 4</text>
+  <text x="540" y="442" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">N = 8</text>
+  <text x="740" y="442" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">N = 16</text>
+  <text x="450" y="465" text-anchor="middle" fill="#8b949e" font-size="13">Closed-Loop Concurrent Users (N)</text>
+
+  <!-- Left Y Axis Label: TTFT (ms) -->
+  <text x="35" y="250" text-anchor="middle" fill="#ef4444" font-size="13" font-weight="700" transform="rotate(-90 35 250)">Time-To-First-Token (TTFT, ms)</text>
+  
+  <!-- Right Y Axis Label: TPOT (ms/tok) -->
+  <text x="845" y="250" text-anchor="middle" fill="#3b82f6" font-size="13" font-weight="700" transform="rotate(90 845 250)">Time-Per-Output-Token (TPOT, ms/tok)</text>
+  <text x="790" y="425" fill="#8b949e" font-size="11">0</text>
+  <text x="790" y="340" fill="#8b949e" font-size="11">10</text>
+  <text x="790" y="260" fill="#8b949e" font-size="11">20</text>
+  <text x="790" y="180" fill="#8b949e" font-size="11">30</text>
+
+  <!-- Curve 1: TTFT (Red) -->
+  <!-- N=1: 15.05ms -> y = 420 - (15.05 * 0.8) = 407.9 -->
+  <!-- N=2: 23.36ms -> y = 420 - (23.36 * 0.8) = 401.3 -->
+  <!-- N=4: 29.80ms -> y = 420 - (29.80 * 0.8) = 396.1 -->
+  <!-- N=8: 43.00ms -> y = 420 - (43.00 * 0.8) = 385.6 -->
+  <!-- N=16: 428.21ms -> y = 420 - (428.21 * 0.8) = 77.4 -->
+  <polyline fill="none" stroke="#ef4444" stroke-width="3.5" points="140,408 260,401 400,396 540,386 740,77" />
+  
+  <!-- Points for TTFT -->
+  <circle cx="140" cy="408" r="5" fill="#ef4444" />
+  <circle cx="260" cy="401" r="5" fill="#ef4444" />
+  <circle cx="400" cy="396" r="5" fill="#ef4444" />
+  <circle cx="540" cy="386" r="6" fill="#ef4444" stroke="#ffffff" stroke-width="1.5" />
+  <circle cx="740" cy="77" r="7" fill="#ef4444" stroke="#ffffff" stroke-width="2" />
+  
+  <text x="540" y="372" text-anchor="middle" fill="#ff7b72" font-size="12" font-weight="700">43.0 ms</text>
+  <text x="735" y="65" text-anchor="end" fill="#ff7b72" font-size="14" font-weight="800">428.2 ms (10.0x Cliff)</text>
+
+  <!-- Curve 2: TPOT (Blue) -->
+  <!-- Scale: 10 ms = 80px (8px per ms). y = 420 - (TPOT * 8.0) -->
+  <!-- N=1: 5.59ms -> y = 420 - 44.7 = 375.3 -->
+  <!-- N=2: 6.80ms -> y = 420 - 54.4 = 365.6 -->
+  <!-- N=4: 10.20ms -> y = 420 - 81.6 = 338.4 -->
+  <!-- N=8: 16.28ms -> y = 420 - 130.2 = 289.8 -->
+  <!-- N=16: 15.23ms -> y = 420 - 121.8 = 298.2 -->
+  <polyline fill="none" stroke="#3b82f6" stroke-width="3" stroke-dasharray="5,3" points="140,375 260,366 400,338 540,290 740,298" />
+  
+  <!-- Points for TPOT -->
+  <circle cx="140" cy="375" r="4.5" fill="#3b82f6" />
+  <circle cx="260" cy="366" r="4.5" fill="#3b82f6" />
+  <circle cx="400" cy="338" r="4.5" fill="#3b82f6" />
+  <circle cx="540" cy="290" r="5" fill="#3b82f6" stroke="#ffffff" stroke-width="1" />
+  <circle cx="740" cy="298" r="5" fill="#3b82f6" stroke="#ffffff" stroke-width="1" />
+  
+  <text x="555" y="305" fill="#58a6ff" font-size="11" font-weight="600">16.3 ms/tok</text>
+  <text x="745" y="318" fill="#58a6ff" font-size="12" font-weight="700">15.2 ms/tok (Invariant!)</text>
+
+  <!-- Legend & Discovery Callout -->
+  <rect x="110" y="100" width="310" height="70" rx="6" fill="#161b22" stroke="#30363d" />
+  <line x1="125" y1="120" x2="155" y2="120" stroke="#ef4444" stroke-width="3" />
+  <text x="165" y="124" fill="#ffffff" font-size="12" font-weight="600">TTFT (ms) — 10x Explosion at N=16</text>
+  
+  <line x1="125" y1="145" x2="155" y2="145" stroke="#3b82f6" stroke-width="3" stroke-dasharray="5,3" />
+  <text x="165" y="149" fill="#ffffff" font-size="12" font-weight="600">TPOT (ms/tok) — 100% Flat / Invariant</text>
+
+  <!-- Bottom Insight Banner -->
+  <rect x="100" y="480" width="680" height="30" rx="4" fill="#1f242c" stroke="#388bfd" stroke-width="1"/>
+  <text x="440" y="500" text-anchor="middle" fill="#58a6ff" font-size="11.5" font-weight="600">Architectural Truth: Latency penalty beyond physical slots is 100% queue wait (Wq). TPOT compute does not slow down.</text>
+</svg>

@@ -1,0 +1,5 @@
+node_id,hardware,arch,theoretical_bw_gb_s,achieved_bw_gb_s,bw_saturation_pct,ttft_ms,tpot_ms_per_tok,decode_speed_tok_s,model,network_transport
+1,GTX 1050 Ti,Pascal GDDR5 (PCIe 3.0),112.0,53.7,47.9,104.3,19.6,51.0,Qwen2.5-Coder-1.5B (0.99 GB Q4_K_M),Local PCIe
+2,Mac Studio M3 Ultra,Apple UMA LPDDR5X (Unified),800.0,127.54,15.9,15.1,7.6,131.0,Qwen2.5-Coder-1.5B (0.99 GB Q4_K_M),Local Unified Memory
+3,NVIDIA L4 (Local Loopback),Ada GDDR6 (PCIe 4.0),300.0,181.26,60.4,7.7,5.5,183.5,Qwen2.5-Coder-1.5B (0.99 GB Q4_K_M),Localhost Pod Wire (0ms)
+3,NVIDIA L4 (Tailscale Mesh),Ada GDDR6 (PCIe 4.0),300.0,192.01,64.0,147.5,5.1,197.2,Qwen2.5-Coder-1.5B (0.99 GB Q4_K_M),WAN Mesh Tunnel (139.8ms wire)

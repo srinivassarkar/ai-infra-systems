@@ -1,0 +1,56 @@
+[
+  {
+    "platform": "Apple M3 Ultra",
+    "config": "mmap=ON, warmup=ON",
+    "t_ready_ms": 2594.54,
+    "first_ttft_ms": 519.85,
+    "total_cold_start_ms": 3114.39,
+    "warm_ttft_ms": 33.44,
+    "warm_tpot_ms": 8.05
+  },
+  {
+    "platform": "Apple M3 Ultra",
+    "config": "mmap=OFF, warmup=ON (Eager Malloc)",
+    "t_ready_ms": 2226.3,
+    "first_ttft_ms": 37.74,
+    "total_cold_start_ms": 2264.04,
+    "warm_ttft_ms": 34.06,
+    "warm_tpot_ms": 8.1
+  },
+  {
+    "platform": "NVIDIA L4",
+    "config": "mmap=ON, warmup=ON",
+    "t_ready_ms": 1096.08,
+    "first_ttft_ms": 34.47,
+    "total_cold_start_ms": 1130.55,
+    "warm_ttft_ms": 16.32,
+    "warm_tpot_ms": 5.54
+  },
+  {
+    "platform": "NVIDIA L4",
+    "config": "mmap=OFF, warmup=ON (Eager Malloc)",
+    "t_ready_ms": 1040.64,
+    "first_ttft_ms": 34.61,
+    "total_cold_start_ms": 1075.25,
+    "warm_ttft_ms": 15.48,
+    "warm_tpot_ms": 5.6
+  },
+  {
+    "platform": "Host CPU Ablation",
+    "config": "mmap=ON, warmup=OFF (-ngl 0)",
+    "t_ready_ms": 1322.32,
+    "first_ttft_ms": 172.75,
+    "total_cold_start_ms": 1495.07,
+    "warm_ttft_ms": 627.16,
+    "warm_tpot_ms": 17.48
+  },
+  {
+    "platform": "Host CPU Ablation",
+    "config": "mmap=OFF, warmup=OFF (-ngl 0)",
+    "t_ready_ms": 1701.47,
+    "first_ttft_ms": 136.49,
+    "total_cold_start_ms": 1837.95,
+    "warm_ttft_ms": 85.34,
+    "warm_tpot_ms": 53.27
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "proxy_config": "Default (Buffering ON)",
+    "concurrent_clients": 4,
+    "median_itl_ms": 248.5,
+    "p99_jitter_ms": 840.2,
+    "max_burst_stutter_ms": 1250.0,
+    "ux_quality": "Unacceptable (Stutter chunks)"
+  },
+  {
+    "proxy_config": "Tuned (proxy_buffering off)",
+    "concurrent_clients": 4,
+    "median_itl_ms": 12.88,
+    "p99_jitter_ms": 16.86,
+    "max_burst_stutter_ms": 21.46,
+    "ux_quality": "Production Fluid (Zero stutter)"
+  }
+]

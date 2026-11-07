@@ -1,0 +1,38 @@
+[
+  {
+    "fault_type": "SIGKILL (Process Abort)",
+    "trial": 1,
+    "detect_time_ms": 12.4,
+    "restart_time_ms": 2645.1,
+    "readiness_time_ms": 18.2,
+    "total_mttr_ms": 2675.7
+  },
+  {
+    "fault_type": "SIGKILL (Process Abort)",
+    "trial": 2,
+    "detect_time_ms": 11.8,
+    "restart_time_ms": 2631.9,
+    "readiness_time_ms": 17.9,
+    "total_mttr_ms": 2661.6
+  },
+  {
+    "fault_type": "SIGKILL (Process Abort)",
+    "trial": 3,
+    "detect_time_ms": 12.1,
+    "restart_time_ms": 2655.4,
+    "readiness_time_ms": 18.3,
+    "total_mttr_ms": 2685.8
+  },
+  {
+    "fault_type": "SIGSTOP (Gray Failure Freeze)",
+    "probe_layer": "Layer 4 (TCP SYN)",
+    "status": "False Healthy (Deadlock Masked)",
+    "action": "Packet SYN-ACK answered by kernel"
+  },
+  {
+    "fault_type": "SIGSTOP (Gray Failure Freeze)",
+    "probe_layer": "Layer 7 (HTTP /health)",
+    "status": "True Failure Detected",
+    "action": "Timeout triggered container restart"
+  }
+]

@@ -1,0 +1,4 @@
+platform,hourly_cost_usd,vram_capacity_slots,slo_latency_knee_slots,binding_constraint,cost_per_1m_tokens_peak,cost_per_1m_tokens_prod,cost_per_1m_tokens_night
+NVIDIA L4 Spot,0.35,414,8,Latency Knee,0.5074,1.0147,2.5368
+Mac Studio M3 Ultra,0.288,4656,32,Latency Knee,0.3333,0.6667,1.6667
+GTX 1050 Ti Edge,0.017,48,2,Compute & VRAM,0.1124,0.2249,0.5622

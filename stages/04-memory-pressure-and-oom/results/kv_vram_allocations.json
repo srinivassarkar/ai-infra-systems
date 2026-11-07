@@ -1,0 +1,42 @@
+[
+  {
+    "model": "Qwen 2.5 Coder 1.5B",
+    "context_tokens": 2048,
+    "kv_precision": "FP16",
+    "vram_footprint_mib": 1278.0,
+    "kv_cache_mib": 56.0,
+    "status": "Healthy"
+  },
+  {
+    "model": "Qwen 2.5 Coder 1.5B",
+    "context_tokens": 8192,
+    "kv_precision": "FP16",
+    "vram_footprint_mib": 1491.5,
+    "kv_cache_mib": 224.0,
+    "status": "Healthy"
+  },
+  {
+    "model": "Qwen 2.5 Coder 1.5B",
+    "context_tokens": 16384,
+    "kv_precision": "FP16",
+    "vram_footprint_mib": 1715.0,
+    "kv_cache_mib": 448.0,
+    "status": "Healthy"
+  },
+  {
+    "model": "Qwen 2.5 Coder 1.5B",
+    "context_tokens": 32768,
+    "kv_precision": "FP16",
+    "vram_footprint_mib": 2132.0,
+    "kv_cache_mib": 854.0,
+    "status": "Healthy (L4) / OOM (GTX 1050 Ti)"
+  },
+  {
+    "model": "Qwen 2.5 Coder 1.5B",
+    "context_tokens": 32768,
+    "kv_precision": "Q8_0",
+    "vram_footprint_mib": 1695.0,
+    "kv_cache_mib": 418.0,
+    "status": "Optimized (-51% KV savings)"
+  }
+]

@@ -1,0 +1,6 @@
+platform,optimization,baseline_val,optimized_val,speedup_multiplier,vram_saved_mib
+NVIDIA L4,FlashAttention,108.41 ms TTFT,32.36 ms TTFT,3.35,52.0
+NVIDIA L4,KV Cache Quantization (q8_0),"2,156 MiB VRAM","1,738 MiB VRAM",1.0,418.0
+NVIDIA L4,Prompt Prefix Caching,46.56 ms TTFT,12.06 ms TTFT,3.86,0.0
+Apple M3 Ultra,FlashAttention (Metal),104.76 tok/s,138.20 tok/s,1.32,0.0
+Apple M3 Ultra,Prompt Prefix Caching,75.87 ms TTFT,34.11 ms TTFT,2.22,0.0

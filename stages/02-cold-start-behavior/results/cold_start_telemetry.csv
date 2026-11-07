@@ -1,0 +1,7 @@
+platform,config,t_ready_ms,first_ttft_ms,total_cold_start_ms,warm_ttft_ms,warm_tpot_ms
+Apple M3 Ultra,"mmap=ON, warmup=ON",2594.54,519.85,3114.39,33.44,8.05
+Apple M3 Ultra,"mmap=OFF, warmup=ON (Eager Malloc)",2226.3,37.74,2264.04,34.06,8.1
+NVIDIA L4,"mmap=ON, warmup=ON",1096.08,34.47,1130.55,16.32,5.54
+NVIDIA L4,"mmap=OFF, warmup=ON (Eager Malloc)",1040.64,34.61,1075.25,15.48,5.6
+Host CPU Ablation,"mmap=ON, warmup=OFF (-ngl 0)",1322.32,172.75,1495.07,627.16,17.48
+Host CPU Ablation,"mmap=OFF, warmup=OFF (-ngl 0)",1701.47,136.49,1837.95,85.34,53.27

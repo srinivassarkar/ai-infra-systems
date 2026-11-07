@@ -1,0 +1,6 @@
+model,context_tokens,kv_precision,vram_footprint_mib,kv_cache_mib,status
+Qwen 2.5 Coder 1.5B,2048,FP16,1278.0,56.0,Healthy
+Qwen 2.5 Coder 1.5B,8192,FP16,1491.5,224.0,Healthy
+Qwen 2.5 Coder 1.5B,16384,FP16,1715.0,448.0,Healthy
+Qwen 2.5 Coder 1.5B,32768,FP16,2132.0,854.0,Healthy (L4) / OOM (GTX 1050 Ti)
+Qwen 2.5 Coder 1.5B,32768,Q8_0,1695.0,418.0,Optimized (-51% KV savings)

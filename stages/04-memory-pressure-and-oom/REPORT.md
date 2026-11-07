@@ -78,7 +78,7 @@ We verified context memory scaling live on the NVIDIA L4 (24 GiB GDDR6) using `l
 
 | Context Setting (`-c`) | KV Cache Precision | Allocated VRAM (`nvidia-smi`) | Incremental Memory vs Baseline | Status |
 | :---: | :---: | :---: | :---: | :---: |
-| **`-c 2048`** | Standard (FP16) | **1,278 MiB** (1.25 GiB) | Baseline (1.1 GB Weights + CUDA) | Healthy (21.7 GiB free) |
+| **`-c 2048`** | Standard (FP16) | **1,278 MiB** (1.25 GiB) | Baseline (~0.99 GB Weights + CUDA overhead) | Healthy (21.7 GiB free) |
 | **`-c 32768`** | Standard (FP16) | **2,132 MiB** (2.08 GiB) | **+854 MiB (+66.8% increase)** | Healthy (20.9 GiB free) |
 | **`-c 32768`** | **Quantized (`q8_0`)** | **~1,695 MiB** (1.65 GiB) | **+417 MiB (~51% KV savings)** | Optimized |
 

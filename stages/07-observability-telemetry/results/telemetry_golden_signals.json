@@ -1,0 +1,25 @@
+[
+  {
+    "metric_name": "llm_ttft_ms",
+    "stream_count": 4,
+    "p50_ms": 111.4,
+    "p90_ms": 125.8,
+    "p99_ms": 138.2,
+    "signal_category": "Leading User Experience"
+  },
+  {
+    "metric_name": "llm_tpot_ms",
+    "stream_count": 4,
+    "p50_ms": 13.92,
+    "p90_ms": 14.5,
+    "p99_ms": 15.1,
+    "signal_category": "Memory Bandwidth Bound"
+  },
+  {
+    "metric_name": "requests_deferred",
+    "stream_count": 16,
+    "queue_depth": 8,
+    "saturation_warning": true,
+    "signal_category": "Leading Autoscaling Saturation"
+  }
+]

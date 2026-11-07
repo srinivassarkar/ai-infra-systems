@@ -1,0 +1,42 @@
+[
+  {
+    "platform": "NVIDIA L4",
+    "optimization": "FlashAttention",
+    "baseline_val": "108.41 ms TTFT",
+    "optimized_val": "32.36 ms TTFT",
+    "speedup_multiplier": 3.35,
+    "vram_saved_mib": 52.0
+  },
+  {
+    "platform": "NVIDIA L4",
+    "optimization": "KV Cache Quantization (q8_0)",
+    "baseline_val": "2,156 MiB VRAM",
+    "optimized_val": "1,738 MiB VRAM",
+    "speedup_multiplier": 1.0,
+    "vram_saved_mib": 418.0
+  },
+  {
+    "platform": "NVIDIA L4",
+    "optimization": "Prompt Prefix Caching",
+    "baseline_val": "46.56 ms TTFT",
+    "optimized_val": "12.06 ms TTFT",
+    "speedup_multiplier": 3.86,
+    "vram_saved_mib": 0.0
+  },
+  {
+    "platform": "Apple M3 Ultra",
+    "optimization": "FlashAttention (Metal)",
+    "baseline_val": "104.76 tok/s",
+    "optimized_val": "138.20 tok/s",
+    "speedup_multiplier": 1.32,
+    "vram_saved_mib": 0.0
+  },
+  {
+    "platform": "Apple M3 Ultra",
+    "optimization": "Prompt Prefix Caching",
+    "baseline_val": "75.87 ms TTFT",
+    "optimized_val": "34.11 ms TTFT",
+    "speedup_multiplier": 2.22,
+    "vram_saved_mib": 0.0
+  }
+]

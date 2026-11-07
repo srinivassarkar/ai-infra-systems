@@ -1,0 +1,4 @@
+metric_name,stream_count,p50_ms,p90_ms,p99_ms,signal_category,queue_depth,saturation_warning
+llm_ttft_ms,4,111.4,125.8,138.2,Leading User Experience,,
+llm_tpot_ms,4,13.92,14.5,15.1,Memory Bandwidth Bound,,
+requests_deferred,16,,,,Leading Autoscaling Saturation,8,True
