@@ -2,6 +2,10 @@
 
 ## 1. Executive Summary & Objective
 
+<p align="center">
+  <img src="../../docs/assets/figure3_optimization_ablation.svg" alt="Figure 3: Serving Engine Optimization Ablation Matrix" width="100%" />
+</p>
+
 In high-throughput LLM serving infrastructure, performance tuning is frequently reduced to coarse end-to-end benchmarks. True systems engineering requires isolating each lever in the inference runtime to measure its isolated impact on latency, memory allocation, and computational throughput.
 
 Stage 08 establishes an empirical **Serving Optimization Ablation Matrix** on enterprise accelerator silicon (NVIDIA L4), isolating four critical architectural levers:

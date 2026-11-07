@@ -2,6 +2,10 @@
 
 ## 1. Executive Summary & The Core Architectural Laws
 
+<p align="center">
+  <img src="../../docs/assets/figure1_saturation_cliff.svg" alt="Figure 1: Concurrency Saturation Cliff & TPOT Invariance" width="100%" />
+</p>
+
 In Stage 01 and Stage 02, we established baseline single-stream latency and virtual memory cold starts. Stage 03 investigates the behavior of LLM serving under concurrent multi-user load.
 
 ### Key Architectural Findings:

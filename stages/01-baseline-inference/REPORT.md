@@ -6,6 +6,10 @@ We measured single-stream inference for `Qwen2.5-Coder-1.5B` (~986 MB model weig
 
 Here is the complete comparison:
 
+<p align="center">
+  <img src="../../docs/assets/figure2_silicon_roofline.svg" alt="Figure 2: Silicon Architecture Roofline & Decode Bandwidth" width="100%" />
+</p>
+
 | Metric | Node 1: GTX 1050 Ti | Node 3: NVIDIA L4 (Local) | Node 3: NVIDIA L4 (Tailscale) | Node 2: Mac Studio M3 Ultra |
 | :--- | :--- | :--- | :--- | :--- |
 | **Silicon Architecture** | Pascal GDDR5 (PCIe 3.0) | Ada GDDR6 (PCIe 4.0) | Ada GDDR6 (over WAN mesh) | Apple UMA LPDDR5X (Unified) |

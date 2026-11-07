@@ -204,6 +204,10 @@ def generate_svg_figure1():
     </linearGradient>
   </defs>
 
+  <!-- Background Card Container -->
+  <rect width="100%" height="100%" fill="#0d1117" rx="8"/>
+  <rect width="100%" height="100%" fill="none" stroke="#30363d" stroke-width="1.5" rx="8"/>
+
   <!-- Title & Subtitle -->
   <text x="450" y="38" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="700">Figure 1: Concurrency Saturation Cliff &amp; TPOT Invariance (Stage 03)</text>
   <text x="450" y="62" text-anchor="middle" fill="#8b949e" font-size="13">Empirical Closed-Loop Benchmarking on NVIDIA L4 (8 Server Slots, Qwen2.5-Coder-1.5B)</text>
@@ -313,6 +317,10 @@ def generate_svg_figure2():
     """
     width, height = 900, 520
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="100%" height="100%" style="background:#0d1117; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <!-- Background Card Container -->
+  <rect width="100%" height="100%" fill="#0d1117" rx="8"/>
+  <rect width="100%" height="100%" fill="none" stroke="#30363d" stroke-width="1.5" rx="8"/>
+
   <!-- Title & Subtitle -->
   <text x="450" y="38" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="700">Figure 2: Silicon Architecture Roofline &amp; Decode Bandwidth (Stage 01)</text>
   <text x="450" y="62" text-anchor="middle" fill="#8b949e" font-size="13">Single-Stream Autoregressive Generation Bounded by Memory Bus Throughput (GB/s)</text>
@@ -394,6 +402,10 @@ def generate_svg_figure3():
     """
     width, height = 900, 520
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="100%" height="100%" style="background:#0d1117; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <!-- Background Card Container -->
+  <rect width="100%" height="100%" fill="#0d1117" rx="8"/>
+  <rect width="100%" height="100%" fill="none" stroke="#30363d" stroke-width="1.5" rx="8"/>
+
   <!-- Title & Subtitle -->
   <text x="450" y="38" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="700">Figure 3: Serving Engine Optimization Ablation (Stage 08)</text>
   <text x="450" y="62" text-anchor="middle" fill="#8b949e" font-size="13">Empirical Levers Isolated on NVIDIA L4 (Qwen2.5-Coder-1.5B, 32K Context)</text>
@@ -454,6 +466,10 @@ def generate_svg_figure4():
     """
     width, height = 900, 520
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="100%" height="100%" style="background:#0d1117; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <!-- Background Card Container -->
+  <rect width="100%" height="100%" fill="#0d1117" rx="8"/>
+  <rect width="100%" height="100%" fill="none" stroke="#30363d" stroke-width="1.5" rx="8"/>
+
   <!-- Title & Subtitle -->
   <text x="450" y="38" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="700">Figure 4: Decomposed Kubernetes Scaling Lag Waterfall (Stage 09)</text>
   <text x="450" y="62" text-anchor="middle" fill="#8b949e" font-size="13">The 51.73-Second Lag Decomposition: Why Reactive HPA Violates Real-Time TTFT SLOs</text>

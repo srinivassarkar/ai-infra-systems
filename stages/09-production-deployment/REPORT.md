@@ -4,6 +4,10 @@
 
 ## 1. Executive Summary & The Autoscaling Lag Dilemma
 
+<p align="center">
+  <img src="../../docs/assets/figure4_keda_scaling_lag.svg" alt="Figure 4: Decomposed Kubernetes Scaling Lag Waterfall" width="100%" />
+</p>
+
 Scaling stateless web services on Kubernetes is straightforward: the Horizontal Pod Autoscaler (HPA) monitors CPU or memory utilization and scales replica counts. In production LLM inference platforms, this classical model breaks down completely due to three fundamental systems constraints:
 1. **The GPU Saturation Illusion:** NVIDIA `gpu_utilization` measures SM kernel execution time. A memory-bound decode loop serving only 2 concurrent users reads $80\% - 95\%$ GPU utilization, offering zero visibility into available slot capacity or true queue backlog.
 2. **The Decomposed Scaling Lag ($51.73\ \mathrm{seconds}$):** Reactive autoscaling requires over 50 seconds to complete the loop from traffic surge to active token dispatch.
