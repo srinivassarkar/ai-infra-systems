@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  inference-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: srinivassarkar/inference-lab:latest
+    container_name: inference-lab
+    ports:
+      - "8501:8501"
+    environment:
+      - INFERENCE_BASE_URL=http://host.docker.internal:8080/v1
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
