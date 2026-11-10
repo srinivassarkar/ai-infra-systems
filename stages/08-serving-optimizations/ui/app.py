@@ -2,7 +2,20 @@
 Inference Lab — Universal Systems Benchmarking & Diagnostic Console
 (llama.cpp, vLLM, Ollama, SGLang, TGI, Triton)
 
-A high-rigor, obsidian-styled inference engineering console.
+A comprehensive inference engineering console addressing the complete
+systems evaluation lifecycle:
+- Prefill vs Decode (Prompt-length sweep & Prefill tok/s)
+- Closed-Loop & Open-Loop Load Testing (p50/p95/p99 & Queue Wait vs Compute)
+- KV Cache & Server State (Context-used meter, /slots, and Prometheus /metrics)
+- Hardware Roofline & MBU% (Measured vs Theoretical Memory Bandwidth)
+- Prefix Caching & KV Reuse Speedup
+- Inter-Token Latency Profiler (p50/p95/p99, jitter, and histogram)
+- Structured Outputs & Tool Calling
+- Chaos Scenarios & Edge Cases
+- Greedy Determinism & 10-Question Mini-Eval
+- Dual-Engine Quant A/B (Independent endpoints & models)
+- Raw Wire Trace (cURL & JSON payloads)
+- Persistent Disk Audit Vault with A/B Run Diffing
 """
 import os
 import re
@@ -14,6 +27,7 @@ import threading
 import html as _html
 import concurrent.futures as cf
 
+import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
@@ -73,14 +87,14 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
-/* 5. Deep Obsidian Background & Clean Typography */
+/* 3. Deep Obsidian Background & Clean Typography */
 body, .stApp {
     background-color: #0b0c10 !important;
     color: #e2e8f0 !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
 
-/* 6. Elegant Minimalist Tabs */
+/* 4. Elegant Minimalist Tabs */
 div[data-baseweb="tab-list"] {
     gap: 4px;
     margin-bottom: 1.4rem;
@@ -112,7 +126,7 @@ div[data-baseweb="tab"][aria-selected="true"] {
     font-weight: 600;
 }
 
-/* 7. Sleek Chat Top Info Bar */
+/* 5. Sleek Chat Top Info Bar */
 .chat-info-bar {
     display: flex;
     justify-content: space-between;
@@ -134,7 +148,7 @@ div[data-baseweb="tab"][aria-selected="true"] {
     font-family: ui-monospace, Menlo, Monaco, monospace;
 }
 
-/* 8. Context Window Usage Meter */
+/* 6. Context Window Usage Meter */
 .context-meter-box {
     background: rgba(18, 20, 26, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.06);
@@ -160,14 +174,14 @@ div[data-baseweb="tab"][aria-selected="true"] {
     transition: width 0.3s ease;
 }
 
-/* 9. Chat Messages Styling */
+/* 7. Chat Messages Styling */
 div[data-testid="stChatMessage"] {
     background-color: transparent !important;
     padding: 0.6rem 0.2rem !important;
     margin-bottom: 0.6rem !important;
 }
 
-/* 10. Monospace Telemetry Badges (llama-ui style) */
+/* 8. Monospace Telemetry Badges (llama-ui style) */
 .telemetry-row {
     display: flex;
     flex-wrap: wrap;
@@ -199,7 +213,7 @@ div[data-testid="stChatMessage"] {
     color: #38bdf8;
 }
 
-/* 11. Metric Cards: Compact, Units in Labels, Zero Ellipsis */
+/* 9. Metric Cards: Compact, Units in Labels, Zero Ellipsis */
 div[data-testid="stMetric"] {
     background: rgba(18, 20, 26, 0.9);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -220,7 +234,7 @@ div[data-testid="stMetricValue"] div {
     font-family: ui-monospace, Menlo, Monaco, monospace;
 }
 
-/* 12. Token Confidence Heatmap */
+/* 10. Token Confidence Heatmap */
 .tok {
     padding: 1px 4px; 
     margin: 1px; 
@@ -265,9 +279,7 @@ HARDWARE_FLEET = {
     "Custom Hardware": {"bandwidth_gbs": 800, "vram_gb": 64, "arch": "Custom"},
 }
 
-DATA_DIR = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
-os.makedirs(DATA_DIR, exist_ok=True)
-RUNS_FILE = os.path.join(DATA_DIR, "inference_runs_vault.json")
+RUNS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inference_runs_vault.json")
 
 # ---------------------------------------------------------
 # Core: Persistent State & Execution Engine
@@ -459,7 +471,7 @@ with st.sidebar:
 
     with st.expander("Server Gateway", expanded=True):
         preset = st.selectbox("Engine Preset", list(PRESETS), index=0)
-        base = st.text_input("Base URL", PRESETS[preset] or DEFAULT_BASE)
+        base = st.text_input("Base URL", PRESETS[preset] or "http://100.102.40.99:8080/v1")
         key = st.text_input("API Key (optional)", type="password")
         if st.button("Probe Endpoint / Fetch Models", use_container_width=True):
             try:
@@ -693,13 +705,12 @@ with t_inspect:
                     st.line_chart(pd.DataFrame({"ITL (ms)": sm["itl"]}), height=200)
             with c2:
                 if sm["itl"]:
-                    st.caption("ITL Distribution / Binned Latency Histogram")
-                    # Binned distribution
-                    df_itl = pd.DataFrame({"ITL (ms)": sm["itl"]})
-                    bins = pd.cut(df_itl["ITL (ms)"], bins=10)
-                    dist = bins.value_counts().sort_index().rename_axis("Latency Bucket (ms)").reset_index(name="Token Count")
-                    dist["Latency Bucket (ms)"] = dist["Latency Bucket (ms)"].astype(str)
-                    st.bar_chart(dist.set_index("Latency Bucket (ms)"), height=200)
+                    st.caption("ITL Distribution / Binned Latency Histogram (ms)")
+                    counts, edges = np.histogram(sm["itl"], bins=min(10, max(5, len(sm["itl"]) // 12)))
+                    midpoints = [round((edges[i] + edges[i+1]) / 2, 1) for i in range(len(counts))]
+                    df_hist = pd.DataFrame({"Token Count": counts}, index=midpoints)
+                    df_hist.index.name = "Latency (ms)"
+                    st.bar_chart(df_hist, height=200)
 
             # Token logprob heatmap
             if stats["logprobs"]:
@@ -740,7 +751,7 @@ with t_context:
             sm = summarize(s)
             
             sweep_results.append({
-                "Context (tokens)": str(target_tokens),
+                "Context (tokens)": int(target_tokens),
                 "TTFT (ms)": round(sm["ttft_ms"], 1),
                 "Prefill Speed (tok/s)": round(sm["prefill_tps"], 1),
                 "Decode Speed (tok/s)": round(sm["tps"], 1),
@@ -749,7 +760,7 @@ with t_context:
             progress_bar.progress((idx + 1) / len(context_steps))
             log_run(f"context_sweep:{target_tokens}", cfg, test_params, s)
 
-        df_sweep = pd.DataFrame(sweep_results).set_index("Context (tokens)")
+        df_sweep = pd.DataFrame(sweep_results).sort_values("Context (tokens)").set_index("Context (tokens)")
         st.subheader("Scaling Curves: Prefill vs Decode")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
@@ -869,7 +880,10 @@ with t_bench:
             })
             bar.progress((i + 1) / len(levels), text=f"Concurrency {c} complete")
         
-        df_bench = pd.DataFrame(results).set_index("Concurrency")
+        sorted_levels_str = [str(x) for x in sorted(levels)]
+        df_bench = pd.DataFrame(results)
+        df_bench["Concurrency"] = pd.Categorical(df_bench["Concurrency"], categories=sorted_levels_str, ordered=True)
+        df_bench = df_bench.set_index("Concurrency")
         a, b, c_ = st.columns(3)
         a.caption("Aggregate Throughput (tok/s) - Total Silicon Efficiency")
         a.line_chart(df_bench[["Aggregate Throughput (tok/s)"]], height=220)
