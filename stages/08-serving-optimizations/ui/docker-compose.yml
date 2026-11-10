@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: srinivassarkar/inference-lab:latest
+    image: wizardxx7/inference-lab:latest
     container_name: inference-lab
     ports:
       - "8501:8501"
